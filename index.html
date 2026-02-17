@@ -716,4 +716,29 @@ eet(wb, ws, "Financial_Data");
 </script>
 </body>
 </html>
-    
+   <script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.22.1/firebase-database-compat.js"></script>
+
+<script>
+  // 你的专属配置
+  const firebaseConfig = {
+    apiKey: "AIzaSyC3ADmd485_ITMpwaLbLDtctrROiwLHbHw",
+    authDomain: "restaurant-cw.firebaseapp.com",
+    databaseURL: "https://restaurant-cw-default-rtdb.firebaseio.com",
+    projectId: "restaurant-cw",
+    storageBucket: "restaurant-cw.firebasestorage.app",
+    messagingSenderId: "980204506513",
+    appId: "1:980204506513:web:ae195605300782435d9e30"
+  };
+
+  // 初始化
+  firebase.initializeApp(firebaseConfig);
+  const db = firebase.database();
+
+  // 这里的代码会自动在你的数据库创建一个“连接测试”
+  db.ref("connection_test").set({
+    time: new Date().toLocaleString(),
+    message: "连接成功！"
+  });
+</script> 
+
