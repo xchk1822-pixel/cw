@@ -575,6 +575,30 @@ document.getElementById('h-pos-info').innerHTML = `<span style="color:#ffeb3b">�
 
     // 12. 页面启动：从云端拉取数据
     fetch(FB_URL).then(r=>r.json()).then(d=>{ if(d){db=d;render();}else{render();} }).catch(e=>render());
-</script>
+<div id="debug-sync" style="position:fixed; bottom:50px; right:20px; z-index:10000; background:red; color:white; padding:15px; border-radius:10px; cursor:pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.3);" onclick="forcePushToCloud()">
+    点我：强制把本地数据推送到 Firebase
+</div>
+
+<script>
+function forcePushToCloud() {
+    const FB_ADDR = "https://restaurant-cw-default-rtdb.firebaseio.com/db.json";
+    if(confirm("确定要强制同步吗？这会覆盖云端的所有内容。")) {
+        fetch(FB_ADDR, {
+            method: 'PUT',
+            body: JSON.stringify(db)
+        })
+        .then(res => {
+            if(res.ok) {
+                alert("🚀 同步成功！快去刷新 Firebase 页面看看，null 消失了！");
+                document.getElementById('debug-sync').style.display = 'none';
+            } else {
+                alert("❌ 失败了，状态码：" + res.status);
+            }
+        })
+        .catch(err => alert("网络错误: " + err));
+}
+}
+</script></script>
 </body>
 </html> 
+
