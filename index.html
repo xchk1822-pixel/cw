@@ -713,6 +713,12 @@ document.getElementById('h-pos-info').innerHTML = `<span style="color:#ffeb3b">�
 
     // 页面启动时自动从云端加载
     fetch(FB_URL).then(r=>r.json()).then(d=>{if(d){db=d;render();}});
-</script>
+// 暴力测试：强行把数据推上云端
+console.log("正在强制同步...");
+fetch("https://restaurant-cw-default-rtdb.firebaseio.com/db.json", {
+    method: 'PUT',
+    body: JSON.stringify(db)
+}).then(res => alert("云端响应状态: " + res.status));</script>
 </body>
 </html>
+
