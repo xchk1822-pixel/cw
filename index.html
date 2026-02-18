@@ -404,16 +404,16 @@ document.getElementById('h-pos-info').innerHTML = `<span style="color:#ffeb3b">�
                 }
             });
 
-            // 1. 小类排序逻辑（从大到小）
+            // --- 修改点：在这里对小类按金额从大到小排序 ---
             subList.sort((a, b) => b.val - a.val);
 
+            // --- 修改点：按照排序后的顺序渲染小类 ---
             subList.forEach(item => {
                 eH += `<tr class="sub-row"><td>└ ${item.name}</td><td>${CUR}${item.val.toFixed(1)}</td><td></td></tr>`;
             });
         });
         document.getElementById('expTbody').innerHTML = eH; 
         
-        // 2. 员工工资汇总表格
         let staffRows = "", totalSal = 0, totalLoan = 0;
         Object.entries(staffSummary).forEach(([name, val]) => {
             totalSal += val.sal; totalLoan += val.loan;
@@ -422,23 +422,24 @@ document.getElementById('h-pos-info').innerHTML = `<span style="color:#ffeb3b">�
         staffRows = `<tr style="background:#fff9c4; font-weight:bold; border-bottom: 2px solid #fb8c00;"><td>🌟 全员合计</td><td>${CUR}${totalSal.toFixed(1)}</td><td>${CUR}${totalLoan.toFixed(1)}</td><td style="color:#e65100">${CUR}${(totalSal-totalLoan).toFixed(1)}</td></tr>` + staffRows;
         document.getElementById('staffTbody').innerHTML = staffRows;
 
-        // 3. 过滤逻辑
         const filtered = db.recs.filter(r => {
             const inDate = (r.date >= fS && r.date <= fE);
             const isDebtModule = (r.type === 'buy' || r.type === 'pay');
             const inKey = !fK || (isDebtModule ? (r.sup && r.sup.toLowerCase() === fK) : JSON.stringify(r).toLowerCase().includes(fK));
+            
             let inMode = (mode === 'shift' && r.type === 'day-sum') || (mode === 'debt' && isDebtModule) || (mode === 'staff' && (r.type === 'salary' || r.type === 'loan'));
             return inDate && inKey && inMode;
         });
 
-        // 4. 主表格渲染
         document.getElementById('tbody').innerHTML = filtered.sort((a,b)=>b.date.localeCompare(a.date)||b.id-a.id).map(r => {
             let typeLabel = {'day-sum':'收支','buy':'挂账','pay':'还款','salary':'工资','loan':'借款'}[r.type];
             let detailHtml = "";
-            if (r.type === 'day-sum') {
-                detailHtml = `<span class="txt-rev-line" style="color:#1a237e;">收: 营收${CUR}${r.totalSales.toFixed(1)} | 现金${CUR}${r.cash.toFixed(1)} | POS${CUR}${r.pos.toFixed(1)} ${r.diff ? `<small style="color:#ffa000; font-weight:normal;"> (误:${r.diff.toFixed(1)})</small>` : ''}</span>`;
-                if(r.expDetails && r.expDetails.length > 0) detailHtml += `<span class="txt-exp-line">支: ${r.expDetails.map(ed => `${ed.cat.split(':')[1]}${CUR}${ed.amt}`).join(', ')}</span>`;
-            } else if (r.type === 'buy') {
+          if (r.type === 'day-sum') {
+    // 将 营收、现金、POS、误差 整合在这一行
+    detailHtml = `<span class="txt-rev-line" style="color:#1a237e;">收: 营收${CUR}${r.totalSales.toFixed(1)} | 现金${CUR}${r.cash.toFixed(1)} | POS${CUR}${r.pos.toFixed(1)} ${r.diff ? `<small style="color:#ffa000; font-weight:normal;"> (误:${r.diff.toFixed(1)})</small>` : ''}</span>`;
+    // 支出明细保持不变
+    if(r.expDetails && r.expDetails.length > 0) detailHtml += `<span class="txt-exp-line">支: ${r.expDetails.map(ed => `${ed.cat.split(':')[1]}${CUR}${ed.amt}`).join(', ')}</span>`;
+} else if (r.type === 'buy') {
                 detailHtml = `[${r.sup}] ${r.itemDetails ? r.itemDetails.map(i=>i.name+CUR+i.amt).join(',') : '采购挂账'}`;
             } else if (r.type === 'pay') {
                 detailHtml = `[${r.sup || '供应商'}] 还款支付`;
@@ -449,79 +450,92 @@ document.getElementById('h-pos-info').innerHTML = `<span style="color:#ffeb3b">�
 
             return `<tr>
                 <td>${r.date}</td><td>${typeLabel}</td><td style="padding:4px 8px">${detailHtml}</td>
-                <td style="font-weight:bold">${CUR}${(r.type==='day-sum' ? (r.cash + r.pos) : (r.amt||0)).toFixed(1)}</td>
-                <td class="no-print">${r.img?`<button onclick="showImg('${r.img}')" style="padding:2px 5px">图</button>`:'-'}</td>
+                   <td style="font-weight:bold">${CUR}${(r.type==='day-sum' ? (r.cash + r.pos) : (r.amt||0)).toFixed(1)}</td>             <td class="no-print">${r.img?`<button onclick="showImg('${r.img}')" style="padding:2px 5px">图</button>`:'-'}</td>
                 <td class="no-print"><button onclick="delRec(${r.id})" style="background:#ffcdd2;color:#b71c1c;padding:2px 5px">删</button></td>
             </tr>`;
         }).join('');
         renderCalendar(document.getElementById('cal-picker').value, calData);
     }
 
-    // 5. 日历函数
     function renderCalendar(monStr, data) {
-        const cal = document.getElementById('calendar'); 
-        cal.innerHTML = "";
-        const [y, m] = monStr.split('-').map(Number); 
-        const firstDay = new Date(y, m-1, 1).getDay(); 
-        const daysInMonth = new Date(y, m, 0).getDate();
-        for(let i=0; i<firstDay; i++) { cal.innerHTML += '<div></div>'; }
-        for(let d=1; d<=daysInMonth; d++) {
-            const ds = `${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-            const val = data[ds] || 0;
-            cal.innerHTML += `
-                <div class="cal-day ${val?'has-data':''}" onclick="document.getElementById('f-start').value='${ds}';document.getElementById('f-end').value='${ds}';render();">
-                    <b>${d}</b><br>
-                    <small style="color:#666">${val?CUR+val.toFixed(0):''}</small>
-                </div>`;
-        }
+    const cal = document.getElementById('calendar'); 
+    cal.innerHTML = "";
+    const [y, m] = monStr.split('-').map(Number); 
+    
+    // 获取当月第一天是星期几
+    const firstDay = new Date(y, m-1, 1).getDay(); 
+    const daysInMonth = new Date(y, m, 0).getDate();
+    
+    // 1. 填充第一天之前的空白格子
+    for(let i=0; i<firstDay; i++) { cal.innerHTML += '<div></div>'; }
+    
+    // 2. 循环生成每一天的格子
+    for(let d=1; d<=daysInMonth; d++) {
+        const ds = `${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+        const val = data[ds] || 0;
+        cal.innerHTML += `
+            <div class="cal-day ${val?'has-data':''}" onclick="document.getElementById('f-start').value='${ds}';document.getElementById('f-end').value='${ds}';render();">
+                <b>${d}</b><br>
+                <small style="color:#666">${val?CUR+val.toFixed(0):''}</small>
+            </div>`;
     }
-
-    // 6. 云端同步函数 (核心)
+}
+    async function getImg(fileInput) { if(capturedImgData) return capturedImgData; const file = fileInput.files[0]; if(!file) return null; return new Promise((res) => { const reader = new FileReader(); reader.onload = () => res(reader.result); reader.readAsDataURL(file); }); }
+    function showImg(src) { document.getElementById('modal-content').src = src; document.getElementById('img-modal').style.display='flex'; }
+    
+    // --- 【云端同步专用代码段】 ---
     const FB_URL = "https://restaurant-cw-default-rtdb.firebaseio.com/db.json";
     function sync() { 
         localStorage.setItem(STORAGE_KEY, JSON.stringify(db)); 
         fetch(FB_URL, {method:'PUT', body:JSON.stringify(db)}).catch(e => console.error("同步失败", e));
     }
 
-    // 7. 图片处理
-    async function getImg(fileInput) { if(capturedImgData) return capturedImgData; const file = fileInput.files[0]; if(!file) return null; return new Promise((res) => { const reader = new FileReader(); reader.onload = () => res(reader.result); reader.readAsDataURL(file); }); }
-    function showImg(src) { document.getElementById('modal-content').src = src; document.getElementById('img-modal').style.display='flex'; }
-    
-    // 8. 增删改设置逻辑
     function delRec(id) { if(confirm('确定删除？')) { db.recs = db.recs.filter(r=>r.id!==id); render(); sync(); } }
     function delSet(key, i) { const k = key==='sup'?'sups':'staffs'; db[k].splice(i,1); render(); sync(); }
     function addSetting(key) { const v = prompt("输入名称:"); if(v) { const k = key==='sup'?'sups':'staffs'; db[k].push(v); render(); sync(); } }
 
-    function addParentCat() { const v = prompt("输入大类名称:"); if(v && !db.catOrder.includes(v)) { db.catOrder.push(v); db.cats[v] = []; render(); sync(); } }
+    function addParentCat() { 
+        const v = prompt("输入大类名称:"); 
+        if(v && !db.catOrder.includes(v)) { db.catOrder.push(v); db.cats[v] = []; render(); sync(); } 
+    }
+
     function renameParentCat(oldName, newName) {
-        newName = newName.trim(); if (!newName || oldName === newName) { render(); return; }
-        if (db.catOrder.includes(newName)) { alert("名称已存在"); render(); return; }
+        newName = newName.trim();
+        if (!newName || oldName === newName) { render(); return; }
+        if (db.catOrder.includes(newName)) { alert("该名称已存在"); render(); return; }
         db.cats[newName] = db.cats[oldName]; delete db.cats[oldName];
         const idx = db.catOrder.indexOf(oldName); if (idx !== -1) db.catOrder[idx] = newName;
-        db.recs.forEach(r => { if (r.expDetails) { r.expDetails.forEach(ed => { if (ed.cat && ed.cat.startsWith(oldName + ':')) ed.cat = ed.cat.replace(oldName + ':', newName + ':'); }); } });
+        db.recs.forEach(r => { if (r.expDetails) { r.expDetails.forEach(ed => { if (ed.cat && ed.cat.startsWith(oldName + ':')) { ed.cat = ed.cat.replace(oldName + ':', newName + ':'); } }); } });
         render(); sync();
     }
+
     function renameChildCat(p, oldC, newC) {
-        newC = newC.trim(); if (!newC || oldC === newC) { render(); return; }
+        newC = newC.trim();
+        if (!newC || oldC === newC) { render(); return; }
         const idx = db.cats[p].indexOf(oldC); if (idx !== -1) db.cats[p][idx] = newC;
         const oldFull = p + ":" + oldC; const newFull = p + ":" + newC;
         db.recs.forEach(r => { if (r.expDetails) { r.expDetails.forEach(ed => { if (ed.cat === oldFull) ed.cat = newFull; }); } });
         render(); sync();
     }
+
     function delParentCat(p) { if(confirm(`确定删除大类 ${p}？`)) { db.catOrder = db.catOrder.filter(x => x !== p); delete db.cats[p]; render(); sync(); } }
     function addChildCat(p) { const v = prompt(`在大类 [${p}] 下新增子类:`); if(v) { if(!db.cats[p]) db.cats[p]=[]; db.cats[p].push(v); render(); sync(); } }
     function delChildCat(p, ci) { db.cats[p].splice(ci,1); render(); sync(); }
     function moveParent(i, dir) { const target = i + dir; if(target < 0 || target >= db.catOrder.length) return; const temp = db.catOrder[i]; db.catOrder[i] = db.catOrder[target]; db.catOrder[target] = temp; render(); sync(); }
     function moveChild(p, i, dir) { const target = i + dir; if(target < 0 || target >= db.cats[p].length) return; const temp = db.cats[p][i]; db.cats[p][i] = db.cats[p][target]; db.cats[p][target] = temp; render(); sync(); }
 
-    // 9. 表单提交与计算
     function calcShift() {
         const t = parseFloat(document.getElementById('in-total-sales').value)||0, p = parseFloat(document.getElementById('in-pos-sales').value)||0, df = parseFloat(document.getElementById('in-diff').value)||0;
         let g = 0; document.querySelectorAll('#exp-rows .exp-amt').forEach(input => g += (parseFloat(input.value)||0));
         document.getElementById('shift-preview').innerHTML = `现金实收计算: ${t} - ${g} - ${p} + ${df} = <b>${CUR}${(t-g-p+df).toFixed(1)}</b>`;
     }
 
-    function forceSave(rec) { db.recs.push(rec); render(); sync(); alert("✅ 保存并同步成功"); }
+    function forceSave(rec) {
+        db.recs.push(rec);
+        render();
+        sync();
+        alert("✅ 已同步到云端");
+    }
 
     document.getElementById('shiftForm').onsubmit = async (e) => {
         e.preventDefault(); const t = parseFloat(document.getElementById('in-total-sales').value)||0, p = parseFloat(document.getElementById('in-pos-sales').value)||0, df = parseFloat(document.getElementById('in-diff').value)||0;
@@ -529,9 +543,14 @@ document.getElementById('h-pos-info').innerHTML = `<span style="color:#ffeb3b">�
         const rec = { id:Date.now(), date:document.getElementById('in-date').value, type:'day-sum', totalSales:t, pos:p, diff:df, cash:(t-g-p+df), expDetails:ed };
         rec.img = await getImg(document.getElementById('in-file-shift')); forceSave(rec); document.getElementById('shiftForm').reset(); resetInputsToToday(); document.getElementById('exp-rows').innerHTML = ""; addExpRow();
     };
-
     document.getElementById('debtForm').onsubmit = async (e) => {
-        e.preventDefault(); let items = []; document.querySelectorAll('#debt-tag-rows .batch-row').forEach(row => { const name = row.querySelector('input').value, amt = parseFloat(row.querySelectorAll('input')[1].value)||0; if(name && amt > 0) items.push({name, amt}); });
+        e.preventDefault(); 
+        let items = []; 
+        document.querySelectorAll('#debt-tag-rows .batch-row').forEach(row => { 
+            const name = row.querySelector('input').value, 
+                  amt = parseFloat(row.querySelectorAll('input')[1].value)||0; 
+            if(name && amt > 0) items.push({name, amt}); 
+        });
         const rec = { id: Date.now(), date: document.getElementById('debt-date').value, type: document.getElementById('in-action').value, sup: document.getElementById('sel-sup').value, bill: document.getElementById('in-bill').value, amt: parseFloat(document.getElementById('debt-amt').value) || 0, itemDetails: items };
         rec.img = await getImg(document.getElementById('in-file-debt')); forceSave(rec); document.getElementById('debtForm').reset(); document.getElementById('debt-tag-rows').innerHTML = ""; resetInputsToToday();
     };
@@ -542,63 +561,79 @@ document.getElementById('h-pos-info').innerHTML = `<span style="color:#ffeb3b">�
         rec.img = await getImg(document.getElementById('in-file-staff')); forceSave(rec); document.getElementById('staffForm').reset(); resetInputsToToday();
     };
 
-    // 10. 辅助函数
     function addExpRow() {
-        const div = document.createElement('div'); div.className = 'batch-row';
-        let parentOptions = ""; db.catOrder.forEach(p => { parentOptions += `<option value="${p}">${p}</option>`; });
+        const div = document.createElement('div');
+        div.className = 'batch-row';
+        let parentOptions = ""; 
+        db.catOrder.forEach(p => { parentOptions += `<option value="${p}">${p}</option>`; });
         div.innerHTML = `<select class="exp-p-cat" onchange="updateChildSelect(this)" style="flex:1">${parentOptions}</select><select class="exp-c-cat" style="flex:1"></select><input type="number" class="exp-amt" step="0.01" placeholder="金额" oninput="calcShift()" style="flex:1"><b onclick="this.parentElement.remove();calcShift()" style="color:red; cursor:pointer; padding:0 5px">×</b>`;
-        document.getElementById('exp-rows').appendChild(div); updateChildSelect(div.querySelector('.exp-p-cat'));
+        document.getElementById('exp-rows').appendChild(div);
+        updateChildSelect(div.querySelector('.exp-p-cat'));
     }
+
     function updateChildSelect(pSelect) {
-        const pName = pSelect.value; const cSelect = pSelect.parentElement.querySelector('.exp-c-cat');
-        cSelect.innerHTML = ''; if (pName && db.cats[pName]) { db.cats[pName].forEach(c => { const opt = document.createElement('option'); opt.value = `${pName}:${c}`; opt.textContent = c; cSelect.appendChild(opt); }); }
+        const pName = pSelect.value;
+        const cSelect = pSelect.parentElement.querySelector('.exp-c-cat');
+        cSelect.innerHTML = ''; 
+        if (pName && db.cats[pName]) {
+            db.cats[pName].forEach(c => { const opt = document.createElement('option'); opt.value = `${pName}:${c}`; opt.textContent = c; cSelect.appendChild(opt); });
+        }
     }
-    function toggleDebtHelper() { const act = document.getElementById('in-action').value; document.getElementById('debt-helper').style.display = (act === 'buy' ? 'block' : 'none'); }
+
+    function toggleDebtHelper() {
+        const act = document.getElementById('in-action').value;
+        document.getElementById('debt-helper').style.display = (act === 'buy' ? 'block' : 'none');
+    }
+
     function addDebtTagRow() {
-        const div = document.createElement('div'); div.className = 'batch-row';
+        const div = document.createElement('div');
+        div.className = 'batch-row';
         div.innerHTML = `<input type="text" placeholder="货品" style="flex:2"><input type="number" step="0.01" placeholder="金额" style="flex:1"><b onclick="this.parentElement.remove()" style="color:red; cursor:pointer; padding:0 10px; font-size:18px;">×</b>`;
         document.getElementById('debt-tag-rows').appendChild(div);
     }
 
-    // 11. 导入导出
-    function exportExcel() { const ws = XLSX.utils.json_to_sheet(db.recs); const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Data"); XLSX.writeFile(wb, `Finance_${new Date().toISOString().split('T')[0]}.xlsx`); }
-    function exportBackup() { const dataStr = JSON.stringify(db); const blob = new Blob([dataStr], {type: "application/json"}); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = `Backup_${new Date().toISOString().split('T')[0]}.json`; a.click(); }
+    function exportExcel() {
+        const ws = XLSX.utils.json_to_sheet(db.recs);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Financial_Data");
+        XLSX.writeFile(wb, `Bluefield_Finance_${new Date().toISOString().split('T')[0]}.xlsx`);
+    }
+
+    function exportBackup() {
+        const dataStr = JSON.stringify(db);
+        const blob = new Blob([dataStr], {type: "application/json"});
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = `BF_Backup_${new Date().toISOString().split('T')[0]}.json`;
+        a.click(); alert("✅ 备份文件已下载。");
+    }
+
     function importBackup() {
-        const input = document.createElement('input'); input.type = 'file'; input.accept = '.json';
+        const input = document.createElement('input');
+        input.type = 'file'; input.accept = '.json';
         input.onchange = e => {
-            const file = e.target.files[0]; const reader = new FileReader();
-            reader.onload = re => { try { const content = JSON.parse(re.target.result); if (content.recs) { if (confirm("确定导入？")) { db = content; render(); sync(); } } } catch (e) { alert("失败"); } };
+            const file = e.target.files[0];
+            const reader = new FileReader();
+            reader.onload = readerEvent => {
+                try {
+                    const content = JSON.parse(readerEvent.target.result);
+                    if (content.recs && content.cats) {
+                        if (confirm("⚠️ 确定要导入并同步到云端吗？")) { db = content; render(); sync(); }
+                    }
+                } catch (err) { alert("❌ 导入失败"); }
+            };
             reader.readAsText(file);
         };
         input.click();
     }
 
-    // 12. 页面启动：从云端拉取数据
-    fetch(FB_URL).then(r=>r.json()).then(d=>{ if(d){db=d;render();}else{render();} }).catch(e=>render());
-<div id="debug-sync" style="position:fixed; bottom:50px; right:20px; z-index:10000; background:red; color:white; padding:15px; border-radius:10px; cursor:pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.3);" onclick="forcePushToCloud()">
-    点我：强制把本地数据推送到 Firebase
-</div>
-
-<script>
-function forcePushToCloud() {
-    const FB_ADDR = "https://restaurant-cw-default-rtdb.firebaseio.com/db.json";
-    if(confirm("确定要强制同步吗？这会覆盖云端的所有内容。")) {
-        fetch(FB_ADDR, {
-            method: 'PUT',
-            body: JSON.stringify(db)
-        })
-        .then(res => {
-            if(res.ok) {
-                alert("🚀 同步成功！快去刷新 Firebase 页面看看，null 消失了！");
-                document.getElementById('debug-sync').style.display = 'none';
-            } else {
-                alert("❌ 失败了，状态码：" + res.status);
-            }
-        })
-        .catch(err => alert("网络错误: " + err));
-}
-}
-</script></script>
+    // --- 启动逻辑：先尝试从云端拉取，拉不到再用本地 ---
+    fetch(FB_URL).then(r => r.json()).then(d => {
+        if(d) { db = d; render(); console.log("云端数据加载成功"); }
+    }).catch(e => {
+        console.log("正在使用本地存储...");
+        render();
+    });
+</script>
 </body>
-</html> 
-
+</html>
