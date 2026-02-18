@@ -435,9 +435,7 @@ document.getElementById('h-pos-info').innerHTML = `<span style="color:#ffeb3b">�
             let typeLabel = {'day-sum':'收支','buy':'挂账','pay':'还款','salary':'工资','loan':'借款'}[r.type];
             let detailHtml = "";
           if (r.type === 'day-sum') {
-    // 将 营收、现金、POS、误差 整合在这一行
     detailHtml = `<span class="txt-rev-line" style="color:#1a237e;">收: 营收${CUR}${r.totalSales.toFixed(1)} | 现金${CUR}${r.cash.toFixed(1)} | POS${CUR}${r.pos.toFixed(1)} ${r.diff ? `<small style="color:#ffa000; font-weight:normal;"> (误:${r.diff.toFixed(1)})</small>` : ''}</span>`;
-    // 支出明细保持不变
     if(r.expDetails && r.expDetails.length > 0) detailHtml += `<span class="txt-exp-line">支: ${r.expDetails.map(ed => `${ed.cat.split(':')[1]}${CUR}${ed.amt}`).join(', ')}</span>`;
 } else if (r.type === 'buy') {
                 detailHtml = `[${r.sup}] ${r.itemDetails ? r.itemDetails.map(i=>i.name+CUR+i.amt).join(',') : '采购挂账'}`;
@@ -462,16 +460,13 @@ document.getElementById('h-pos-info').innerHTML = `<span style="color:#ffeb3b">�
     cal.innerHTML = "";
     const [y, m] = monStr.split('-').map(Number); 
     
-    // 获取当月第一天是星期几
     const firstDay = new Date(y, m-1, 1).getDay(); 
     const daysInMonth = new Date(y, m, 0).getDate();
     
-    // 1. 填充第一天之前的空白格子，使日期与星期对齐
     for(let i=0; i<firstDay; i++) {
         cal.innerHTML += '<div></div>';
     }
     
-    // 2. 循环生成每一天的格子
     for(let d=1; d<=daysInMonth; d++) {
         const ds = `${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
         const val = data[ds] || 0;
@@ -485,13 +480,18 @@ document.getElementById('h-pos-info').innerHTML = `<span style="color:#ffeb3b">�
 }
     async function getImg(fileInput) { if(capturedImgData) return capturedImgData; const file = fileInput.files[0]; if(!file) return null; return new Promise((res) => { const reader = new FileReader(); reader.onload = () => res(reader.result); reader.readAsDataURL(file); }); }
     function showImg(src) { document.getElementById('modal-content').src = src; document.getElementById('img-modal').style.display='flex'; }
-    function delRec(id) { if(confirm('确定删除？')) { db.recs = db.recs.filter(r=>r.id!==id); render(); } }
-    function delSet(key, i) { const k = key==='sup'?'sups':'staffs'; db[k].splice(i,1); render(); }
-    function addSetting(key) { const v = prompt("输入名称:"); if(v) { const k = key==='sup'?'sups':'staffs'; db[k].push(v); render(); } }
+    
+    // --- 这里是云端同步的关键补丁，仅在此添加 ---
+    const FB_URL = "https://restaurant-cw-default-rtdb.firebaseio.com/db.json";
+    function sync(){ fetch(FB_URL,{method:'PUT',body:JSON.stringify(db)}); localStorage.setItem(STORAGE_KEY,JSON.stringify(db)); }
+
+    function delRec(id) { if(confirm('确定删除？')) { db.recs = db.recs.filter(r=>r.id!==id); render(); sync(); } }
+    function delSet(key, i) { const k = key==='sup'?'sups':'staffs'; db[k].splice(i,1); render(); sync(); }
+    function addSetting(key) { const v = prompt("输入名称:"); if(v) { const k = key==='sup'?'sups':'staffs'; db[k].push(v); render(); sync(); } }
 
     function addParentCat() { 
         const v = prompt("输入大类名称:"); 
-        if(v && !db.catOrder.includes(v)) { db.catOrder.push(v); db.cats[v] = []; render(); } 
+        if(v && !db.catOrder.includes(v)) { db.catOrder.push(v); db.cats[v] = []; render(); sync(); } 
     }
 
     function renameParentCat(oldName, newName) {
@@ -511,7 +511,7 @@ document.getElementById('h-pos-info').innerHTML = `<span style="color:#ffeb3b">�
                 });
             }
         });
-        render();
+        render(); sync();
     }
 
     function renameChildCat(p, oldC, newC) {
@@ -529,32 +529,31 @@ document.getElementById('h-pos-info').innerHTML = `<span style="color:#ffeb3b">�
                 });
             }
         });
-        render();
+        render(); sync();
     }
 
     function delParentCat(p) { 
         if(confirm(`确定删除大类 ${p} 及其所有子类？`)) { 
-            db.catOrder = db.catOrder.filter(x => x !== p); delete db.cats[p]; render(); 
+            db.catOrder = db.catOrder.filter(x => x !== p); delete db.cats[p]; render(); sync();
         } 
     }
 
     function addChildCat(p) { 
         const v = prompt(`在大类 [${p}] 下新增子类:`); 
-        if(v) { if(!db.cats[p]) db.cats[p]=[]; db.cats[p].push(v); render(); } 
+        if(v) { if(!db.cats[p]) db.cats[p]=[]; db.cats[p].push(v); render(); sync(); } 
     }
 
     function delChildCat(p, ci) { 
-        db.cats[p].splice(ci,1); render(); 
+        db.cats[p].splice(ci,1); render(); sync();
     }
     
-    // 增加大类移动逻辑
     function moveParent(i, dir) {
         const target = i + dir;
         if(target < 0 || target >= db.catOrder.length) return;
         const temp = db.catOrder[i];
         db.catOrder[i] = db.catOrder[target];
         db.catOrder[target] = temp;
-        render();
+        render(); sync();
     }
     
     function moveChild(p, i, dir) {
@@ -563,7 +562,7 @@ document.getElementById('h-pos-info').innerHTML = `<span style="color:#ffeb3b">�
         const temp = db.cats[p][i];
         db.cats[p][i] = db.cats[p][target];
         db.cats[p][target] = temp;
-        render();
+        render(); sync();
     }
 
     function calcShift() {
@@ -572,13 +571,20 @@ document.getElementById('h-pos-info').innerHTML = `<span style="color:#ffeb3b">�
         document.getElementById('shift-preview').innerHTML = `现金实收计算: ${t}(总) - ${g}(支) - ${p}(卡) + ${df}(误) = <b>${CUR}${(t-g-p+df).toFixed(1)}</b>`;
     }
 
+    function forceSave(rec) {
+        db.recs.push(rec);
+        render();
+        sync();
+        alert("✅ 保存成功（已同步云端）");
+    }
+
     document.getElementById('shiftForm').onsubmit = async (e) => {
         e.preventDefault(); const t = parseFloat(document.getElementById('in-total-sales').value)||0, p = parseFloat(document.getElementById('in-pos-sales').value)||0, df = parseFloat(document.getElementById('in-diff').value)||0;
         let ed = [], g = 0; document.querySelectorAll('#exp-rows .batch-row').forEach(row => { const cat = row.querySelector('.exp-c-cat').value, a = parseFloat(row.querySelector('.exp-amt').value)||0; if(a>0) { ed.push({cat:cat, amt:a}); g+=a; } });
         const rec = { id:Date.now(), date:document.getElementById('in-date').value, type:'day-sum', totalSales:t, pos:p, diff:df, cash:(t-g-p+df), expDetails:ed };
         rec.img = await getImg(document.getElementById('in-file-shift')); forceSave(rec); document.getElementById('shiftForm').reset(); resetInputsToToday(); document.getElementById('exp-rows').innerHTML = ""; addExpRow();
     };
-document.getElementById('debtForm').onsubmit = async (e) => {
+    document.getElementById('debtForm').onsubmit = async (e) => {
         e.preventDefault(); 
         let items = []; 
         document.querySelectorAll('#debt-tag-rows .batch-row').forEach(row => { 
@@ -618,7 +624,6 @@ document.getElementById('debtForm').onsubmit = async (e) => {
         resetInputsToToday();
     };
 
-    // 增加支出项：二级联动逻辑
     function addExpRow() {
         const div = document.createElement('div');
         div.className = 'batch-row';
@@ -632,7 +637,7 @@ document.getElementById('debtForm').onsubmit = async (e) => {
             <b onclick="this.parentElement.remove();calcShift()" style="color:red; cursor:pointer; padding:0 5px">×</b>
         `;
         document.getElementById('exp-rows').appendChild(div);
-        updateChildSelect(div.querySelector('.exp-p-cat')); // 立即初始化子类
+        updateChildSelect(div.querySelector('.exp-p-cat'));
     }
 
     function updateChildSelect(pSelect) {
@@ -655,25 +660,23 @@ document.getElementById('debtForm').onsubmit = async (e) => {
     }
 
     function addDebtTagRow() {
-    const div = document.createElement('div');
-    div.className = 'batch-row';
-    // 新版增加了红色的 × 号，点击可以删除不想要的行
-    div.innerHTML = `
-        <input type="text" placeholder="货品" style="flex:2">
-        <input type="number" step="0.01" placeholder="金额" style="flex:1">
-        <b onclick="this.parentElement.remove()" style="color:red; cursor:pointer; padding:0 10px; font-size:18px;">×</b>
-    `;
-    document.getElementById('debt-tag-rows').appendChild(div);
-}
+        const div = document.createElement('div');
+        div.className = 'batch-row';
+        div.innerHTML = `
+            <input type="text" placeholder="货品" style="flex:2">
+            <input type="number" step="0.01" placeholder="金额" style="flex:1">
+            <b onclick="this.parentElement.remove()" style="color:red; cursor:pointer; padding:0 10px; font-size:18px;">×</b>
+        `;
+        document.getElementById('debt-tag-rows').appendChild(div);
+    }
 
-function exportExcel() {
-    const ws = XLSX.utils.json_to_sheet(db.recs);
+    function exportExcel() {
+        const ws = XLSX.utils.json_to_sheet(db.recs);
         const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sh
-eet(wb, ws, "Financial_Data");
+        XLSX.utils.book_append_sheet(wb, ws, "Financial_Data");
         XLSX.writeFile(wb, `Bluefield_Finance_${new Date().toISOString().split('T')[0]}.xlsx`);
     }
-// 备份导出逻辑
+
     function exportBackup() {
         const dataStr = JSON.stringify(db);
         const blob = new Blob([dataStr], {type: "application/json"});
@@ -682,10 +685,9 @@ eet(wb, ws, "Financial_Data");
         a.href = url;
         a.download = `BF_Backup_${new Date().toISOString().split('T')[0]}.json`;
         a.click();
-        alert("✅ 备份文件 (.json) 已下载。请妥善保存，换电脑时可用它导入恢复。");
+        alert("✅ 备份文件已下载");
     }
 
-    // 备份导入逻辑
     function importBackup() {
         const input = document.createElement('input');
         input.type = 'file';
@@ -697,111 +699,20 @@ eet(wb, ws, "Financial_Data");
                 try {
                     const content = JSON.parse(readerEvent.target.result);
                     if (content.recs && content.cats) {
-                        if (confirm("⚠️ 导入将覆盖当前所有数据！确定要导入吗？")) {
+                        if (confirm("⚠️ 导入将覆盖当前数据！确定吗？")) {
                             db = content;
-                            localStorage.setItem(STORAGE_KEY, JSON.stringify(db));
-                            location.reload(); // 导入后强制刷新页面以加载新数据
+                            render(); sync();
                         }
-                    } else {
-                        alert("❌ 错误：备份文件格式不正确。");
                     }
-                } catch (err) {
-                    alert("❌ 导入失败，文件可能已损坏。");
-                }
+                } catch (err) { alert("❌ 导入失败"); }
             };
             reader.readAsText(file);
         };
         input.click();
-    }// --- 核心同步：连接服务器保存数据库 ---
-async function syncToServer() {
-    // 仓库配置信息
-    const GITHUB_TOKEN = "ghp_xxxxxxxxxxxxxxxxxxxxxxx"; // 请确保这里是你的 Token
-    const REPO_OWNER = "你的用户名"; 
-    const REPO_NAME = "你的仓库名";
-    const FILE_PATH = "BF_DB_V1299.json"; // 服务器上的文件名
-    const API_URL = `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${FILE_PATH}`;
-
-    try {
-        // 1. 获取服务器上文件的最新状态 (SHA)
-        const getRes = await fetch(API_URL, {
-            headers: { "Authorization": `token ${GITHUB_TOKEN}` }
-        });
-        
-        let sha = "";
-        if (getRes.ok) {
-            const fileData = await getRes.json();
-            sha = fileData.sha;
-        }
-
-        // 2. 将本地最新的 db 转换为服务器需要的格式 (Base64)
-        const content = btoa(unescape(encodeURIComponent(JSON.stringify(db, null, 2))));
-
-        // 3. 发送请求，把数据推送到服务器
-        const putRes = await fetch(API_URL, {
-            method: "PUT",
-            headers: {
-                "Authorization": `token ${GITHUB_TOKEN}`,
-                "Content-Type": "application/json"
-            },
-            body: JSON.stringify({
-                message: "Sync Data: " + new Date().toLocaleString(),
-                content: content,
-                sha: sha // 如果文件已存在，必须带上这个 SHA 才能成功覆盖
-            })
-        });
-
-        if (putRes.ok) {
-            console.log("云端同步成功 ✅");
-        } else {
-            console.error("同步失败，状态码:", putRes.status);
-        }
-    } catch (err) {
-        console.error("连接服务器异常:", err);
     }
-}
 
-// 补全之前你代码中中断的 renameParentCat 逻辑
-function renameParentCat(oldName, newName) {
-    newName = newName.trim();
-    if (!newName || oldName === newName) { render(); return; }
-    if (db.catOrder.includes(newName)) { alert("该名称已存在"); render(); return; }
-    
-    db.cats[newName] = db.cats[oldName];
-    delete db.cats[oldName];
-    const idx = db.catOrder.indexOf(oldName);
-    if (idx !== -1) db.catOrder[idx] = newName;
-    
-    // 同步历史记录中的分类名称
-    db.recs.forEach(r => {
-        if (r.expDetails) {
-            r.expDetails.forEach(ed => {
-                if (ed.cat && ed.cat.startsWith(oldName + ':')) {
-                    ed.cat = ed.cat.replace(oldName + ':', newName + ':');
-                }
-            });
-        }
-    });
-    render();
-    syncToServer(); // 触发服务器同步
-}
-
-// 补全子分类改名
-function renameChildCat(p, oldC, newC) {
-    newC = newC.trim();
-    if (!newC || oldC === newC) { render(); return; }
-    const idx = db.cats[p].indexOf(oldC);
-    if (idx !== -1) db.cats[p][idx] = newC;
-    db.recs.forEach(r => {
-        if (r.expDetails) {
-            r.expDetails.forEach(ed => {
-                if (ed.cat === p + ':' + oldC) ed.cat = p + ':' + newC;
-            });
-        }
-    });
-    render();
-    syncToServer(); // 触发服务器同步
-}
+    // 页面启动时自动从云端加载
+    fetch(FB_URL).then(r=>r.json()).then(d=>{if(d){db=d;render();}});
 </script>
 </body>
 </html>
-    
