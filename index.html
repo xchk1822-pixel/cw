@@ -5,6 +5,11 @@
     <title>Bluefield 餐厅财务管理 系统</title>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js"></script>
     <style>
+     /* --- 权限控制专供：只粘这一次，不再改了 --- */
+.admin-only { display: none !important; } 
+#passwordModal { display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.8); z-index:2000; justify-content:center; align-items:center; }
+.modal-box { background: white; padding: 25px; border-radius: 12px; width: 300px; text-align: center; }
+/* --- 权限控制结束 --- */
         :root { --primary: #3f51b5; --bg: #f5f7fa; --success: #43a047; --danger: #e53935; --warning: #ffa000; --info: #00acc1; }
         body { font-family: "Segoe UI", "Microsoft YaHei", sans-serif; background: var(--bg); margin: 0; padding: 15px; color: #333; }
         .box { background: white; padding: 18px; border-radius: 8px; box-shadow: 0 2px 12px rgba(0,0,0,0.06); margin-bottom: 20px; }
@@ -51,7 +56,21 @@
     </style>
 </head>
 <body onload="init()">
+<div id="passwordModal">
+    <div class="modal-box">
+        <h3 style="color:#333; margin-top:0;">🔑 管理员验证</h3>
+        <input type="password" id="adminPassInput" placeholder="输入密码" style="text-align:center; font-size:18px; width:100%; margin-bottom:15px; padding:10px; border:1px solid #ddd; border-radius:4px; box-sizing:border-box;">
+        <div style="display:flex; gap:10px;">
+            <button onclick="document.getElementById('passwordModal').style.display='none'" style="background:#666; color:white; flex:1; padding:10px; border-radius:4px; border:none; cursor:pointer;">取消</button>
+            <button onclick="verifyPassword()" style="background:#43a047; color:white; flex:1; padding:10px; border-radius:4px; border:none; cursor:pointer;">确认</button>
+        </div>
+    </div>
+</div>
 
+<div class="no-print" style="max-width:1200px; margin: 10px auto; text-align: right; display:flex; justify-content:space-between; align-items:center; background:#fff; padding:10px 20px; border-radius:8px; border:1px solid #ddd; box-sizing:border-box;">
+    <span id="roleStatus" style="font-weight:bold; color:#666; font-size:14px;">当前状态：👀 只读查看模式</span>
+    <button id="authBtn" onclick="handleAuthClick()" style="width:auto; padding:6px 15px; background:#455a64; color:white; border:none; border-radius:4px; cursor:pointer; font-size:13px; margin:0;">🔑 管理登录</button>
+</div>
 <div id="img-modal" onclick="this.style.display='none'"><img id="modal-content"></div>
 
 <div class="header no-print">
@@ -67,7 +86,7 @@
 </div>
 
 <div class="main-layout">
-    <aside class="no-print">
+    <aside class="no-print admin-only">
         <div class="box">
     <b style="font-size:14px; color:var(--primary);">🗓️ 月度日历</b>
     <input type="month" id="cal-picker" onchange="render()">
@@ -228,7 +247,7 @@
                         <th>明细详情 (上收下支)</th>
                         <th style="width:90px">总金额</th>
                         <th class="no-print" style="width:40px">凭证</th>
-                        <th class="no-print" style="width:40px">操作</th>
+                        <th class="no-print admin-only" style="width:40px">操作</th>
                     </tr>
                 </thead>
                 <tbody id="tbody"></tbody>
@@ -238,6 +257,53 @@
 </div>
 
 <script>
+    // --- 核心权限逻辑 ---
+const ADMIN_PASS = "123456"; // 你的密码
+let isAdmin = false;
+
+function handleAuthClick() {
+    if (isAdmin) {
+        isAdmin = false;
+        applyPermissions();
+        alert("已退出管理模式");
+    } else {
+        document.getElementById('passwordModal').style.display = 'flex';
+    }
+}
+
+function verifyPassword() {
+    if (document.getElementById('adminPassInput').value === ADMIN_PASS) {
+        isAdmin = true;
+        applyPermissions();
+        document.getElementById('passwordModal').style.display = 'none';
+        document.getElementById('adminPassInput').value = "";
+    } else {
+        alert("密码错误！");
+    }
+}
+
+function applyPermissions() {
+    const adminElements = document.querySelectorAll('.admin-only');
+    adminElements.forEach(el => {
+        if (isAdmin) {
+            // 如果是管理员，恢复显示
+            if (el.tagName === 'TH' || el.tagName === 'TD') {
+                el.style.display = 'table-cell';
+            } else if (el.tagName === 'ASIDE') {
+                el.style.display = 'block';
+            } else {
+                el.style.display = 'block';
+            }
+        } else {
+            // 如果不是，全部隐藏
+            el.style.setProperty('display', 'none', 'important');
+        }
+    });
+
+    document.getElementById('roleStatus').innerText = isAdmin ? "🔐 管理员模式 (可编辑)" : "👀 只读查看模式";
+    document.getElementById('roleStatus').style.color = isAdmin ? "red" : "#666";
+    document.getElementById('authBtn').innerText = isAdmin ? "🔒 退出管理" : "🔑 管理登录";
+}
     const STORAGE_KEY = "BF_DB_V1299";
     let db = { recs: [], cats: {"肉类":["鸡肉","牛肉"],"外卖":["外卖"],"杂费":["其他"]}, sups: ['默认供应商'], staffs: ['默认员工'], catOrder: ["肉类","外卖","杂费"] };
     const CUR = "C$ ";
@@ -451,10 +517,10 @@ document.getElementById('h-pos-info').innerHTML = `<span style="color:#ffeb3b">�
             return `<tr>
                 <td>${r.date}</td><td>${typeLabel}</td><td style="padding:4px 8px">${detailHtml}</td>
                    <td style="font-weight:bold">${CUR}${(r.type==='day-sum' ? (r.cash + r.pos) : (r.amt||0)).toFixed(1)}</td>             <td class="no-print">${r.img?`<button onclick="showImg('${r.img}')" style="padding:2px 5px">图</button>`:'-'}</td>
-                <td class="no-print"><button onclick="delRec(${r.id})" style="background:#ffcdd2;color:#b71c1c;padding:2px 5px">删</button></td>
+                <td class="no-print admin-only"><button onclick="delRec(${r.id})" ...>删</button></td>
             </tr>`;
         }).join('');
-        renderCalendar(document.getElementById('cal-picker').value, calData);
+        renderCalendar(document.getElementById('cal-picker').value, calData);applyPermissions();
     }
 
     function renderCalendar(monStr, data) {
@@ -637,3 +703,4 @@ document.getElementById('h-pos-info').innerHTML = `<span style="color:#ffeb3b">�
 </script>
 </body>
 </html>
+
