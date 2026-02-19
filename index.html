@@ -170,6 +170,26 @@
             <div style="margin-top:10px; padding:8px; background:#e8f5e9; border-radius:4px; font-size:12px;" id="cloud-status">
                 ☁️ 云端同步: 连接中...
             </div>
+            
+            <!-- 密码保护设置 -->
+            <hr>
+            <div style="margin-top:10px; padding:8px; background:#fff3e0; border-radius:4px; font-size:12px;">
+                <div style="display:flex; align-items:center; gap:5px; margin-bottom:5px;">
+                    <b style="color:#e65100;">🔒 编辑保护</b>
+                    <span id="lock-status" style="font-size:11px; color:#666;">(已锁定)</span>
+                </div>
+                <div style="display:flex; gap:5px;">
+                    <input type="password" id="password-input" placeholder="输入密码" style="flex:2; margin:0; padding:8px;">
+                    <button onclick="unlockWithPassword()" style="flex:1; margin:0; padding:8px; background:#fb8c00;">解锁</button>
+                </div>
+                <div style="margin-top:5px; display:flex; gap:5px;">
+                    <button onclick="lockSystem()" style="flex:1; padding:5px; background:#757575;">锁定</button>
+                    <button onclick="setNewPassword()" style="flex:1; padding:5px; background:#0288d1;">设置密码</button>
+                </div>
+                <div style="margin-top:5px; font-size:10px; color:#999; text-align:center;" id="password-hint">
+                    默认密码: 123456
+                </div>
+            </div>
         </div>
     </aside>
 
@@ -279,6 +299,11 @@
     let firebaseLoaded = false;
     let syncInProgress = false;
     let autoSyncInterval = null;
+
+    // ==================== 密码保护变量 ====================
+    const DEFAULT_PASSWORD = "123456";
+    let currentPassword = localStorage.getItem('BF_PASSWORD') || DEFAULT_PASSWORD;
+    let isUnlocked = false;
 
     // ==================== Firebase 初始化 ====================
     async function initFirebase() {
@@ -416,7 +441,141 @@
         render();
     }
 
-    // ==================== 原有函数（只修改了数据保存部分）====================
+    // ==================== 密码保护功能 ====================
+    function initPasswordProtection() {
+        const lockStatus = document.getElementById('lock-status');
+        if (lockStatus) {
+            lockStatus.innerText = isUnlocked ? '(已解锁)' : '(已锁定)';
+            lockStatus.style.color = isUnlocked ? '#4CAF50' : '#e65100';
+        }
+        
+        // 开始监控所有编辑操作
+        monitorEditOperations();
+    }
+
+    // 监控所有编辑操作
+    function monitorEditOperations() {
+        // 拦截所有按钮点击
+        document.addEventListener('click', function(e) {
+            // 获取被点击的元素
+            const target = e.target;
+            
+            // 检查是否是编辑相关的按钮
+            const isEditButton = 
+                target.closest('button[onclick*="add"]') || // 添加按钮
+                target.closest('button[onclick*="del"]') || // 删除按钮
+                target.closest('button[onclick*="save"]') || // 保存按钮
+                target.closest('[onclick*="move"]') || // 移动按钮
+                target.closest('[onclick*="rename"]') || // 重命名
+                target.closest('[contenteditable="true"]') || // 可编辑内容
+                target.closest('.tag b') || // 删除标签
+                target.closest('button[type="submit"]') || // 提交按钮
+                (target.tagName === 'BUTTON' && !target.closest('#password-input') && 
+                 !target.closest('button[onclick="unlockWithPassword()"]') &&
+                 !target.closest('button[onclick="lockSystem()"]') &&
+                 !target.closest('button[onclick="setNewPassword()"]') &&
+                 !target.closest('button[onclick="exportExcel()"]') &&
+                 !target.closest('button[onclick="exportBackup()"]') &&
+                 !target.closest('button[onclick="importBackup()"]') &&
+                 !target.closest('button[onclick="window.print()"]'));
+            
+            if (isEditButton && !isUnlocked) {
+                e.preventDefault();
+                e.stopPropagation();
+                alert('🔒 系统已锁定，请输入密码解锁后才能编辑！');
+                return false;
+            }
+        }, true); // 使用捕获阶段，确保先执行
+        
+        // 拦截表单提交
+        const forms = ['shiftForm', 'debtForm', 'staffForm'];
+        forms.forEach(formId => {
+            const form = document.getElementById(formId);
+            if (form) {
+                form.addEventListener('submit', function(e) {
+                    if (!isUnlocked) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        alert('🔒 系统已锁定，请输入密码解锁后才能保存！');
+                        return false;
+                    }
+                }, true);
+            }
+        });
+        
+        // 拦截 contenteditable 的输入
+        document.addEventListener('keydown', function(e) {
+            const target = e.target;
+            if (target.getAttribute('contenteditable') === 'true' && !isUnlocked) {
+                e.preventDefault();
+                e.stopPropagation();
+                alert('🔒 系统已锁定，请输入密码解锁后才能编辑！');
+                return false;
+            }
+        }, true);
+    }
+
+    // 解锁系统
+    function unlockWithPassword() {
+        const input = document.getElementById('password-input');
+        const enteredPassword = input.value;
+        
+        if (enteredPassword === currentPassword) {
+            isUnlocked = true;
+            document.getElementById('lock-status').innerText = '(已解锁)';
+            document.getElementById('lock-status').style.color = '#4CAF50';
+            document.getElementById('password-input').value = '';
+            document.getElementById('password-hint').innerText = '✅ 已解锁，可以进行编辑操作';
+            document.getElementById('password-hint').style.color = '#4CAF50';
+            
+            // 3分钟后自动锁定
+            setTimeout(() => {
+                if (isUnlocked) {
+                    lockSystem();
+                }
+            }, 3 * 60 * 1000);
+        } else {
+            alert('❌ 密码错误！');
+            document.getElementById('password-hint').innerText = '❌ 密码错误，请重试';
+            document.getElementById('password-hint').style.color = '#f44336';
+        }
+    }
+
+    // 锁定系统
+    function lockSystem() {
+        isUnlocked = false;
+        document.getElementById('lock-status').innerText = '(已锁定)';
+        document.getElementById('lock-status').style.color = '#e65100';
+        document.getElementById('password-hint').innerText = '🔒 系统已锁定，需要密码才能编辑';
+        document.getElementById('password-hint').style.color = '#999';
+    }
+
+    // 设置新密码
+    function setNewPassword() {
+        if (!isUnlocked) {
+            alert('🔒 请先解锁系统才能修改密码！');
+            return;
+        }
+        
+        const newPassword = prompt('请输入新密码（至少4位）:', '');
+        if (newPassword) {
+            if (newPassword.length < 4) {
+                alert('密码至少需要4位！');
+                return;
+            }
+            const confirmPassword = prompt('请再次输入新密码确认:', '');
+            if (confirmPassword === newPassword) {
+                currentPassword = newPassword;
+                localStorage.setItem('BF_PASSWORD', newPassword);
+                alert('✅ 密码修改成功！新密码已生效。');
+                document.getElementById('password-hint').innerHTML = `✅ 密码已修改，新密码生效`;
+            } else {
+                alert('❌ 两次输入的密码不一致！');
+            }
+        }
+    }
+
+    // ==================== 原有函数 ====================
     function resetInputsToToday() {
         const d = new Date().toISOString().split('T')[0];
         document.getElementById('cal-picker').value = d.substring(0,7);
@@ -449,6 +608,9 @@
                 saveToCloud();
             }
         }, 5 * 60 * 1000);
+        
+        // 初始化密码保护
+        setTimeout(initPasswordProtection, 2000);
     }
 
     async function startCapture(inputId) {
@@ -485,7 +647,11 @@
         alert("🖥️ 截图已就绪"); 
     }
 
-    async function forceSave(newRec) { 
+    async function forceSave(newRec) {
+        if (!isUnlocked) {
+            alert('🔒 系统已锁定，请输入密码解锁后才能保存！');
+            return;
+        }
         db.recs.push(newRec); 
         await updateDB(db);
         alert("✅ 保存成功"); 
@@ -503,7 +669,7 @@
     }
 
     function render() {
-        // 你的原有 render 函数完全不变
+        // 原有 render 函数完全不变
         const mode = document.getElementById('main-mode').value;
         const fS = document.getElementById('f-start').value, fE = document.getElementById('f-end').value, fK = document.getElementById('f-key').value.toLowerCase();
         
@@ -707,6 +873,10 @@
     }
     
     async function delRec(id) { 
+        if (!isUnlocked) {
+            alert('🔒 系统已锁定，请输入密码解锁后才能删除！');
+            return;
+        }
         if(confirm('确定删除？')) { 
             db.recs = db.recs.filter(r=>r.id!==id); 
             await updateDB(db); 
@@ -714,12 +884,20 @@
     }
     
     async function delSet(key, i) { 
+        if (!isUnlocked) {
+            alert('🔒 系统已锁定，请输入密码解锁后才能删除！');
+            return;
+        }
         const k = key==='sup'?'sups':'staffs'; 
         db[k].splice(i,1); 
         await updateDB(db); 
     }
     
     async function addSetting(key) { 
+        if (!isUnlocked) {
+            alert('🔒 系统已锁定，请输入密码解锁后才能添加！');
+            return;
+        }
         const v = prompt("输入名称:"); 
         if(v) { 
             const k = key==='sup'?'sups':'staffs'; 
@@ -729,6 +907,10 @@
     }
 
     async function addParentCat() { 
+        if (!isUnlocked) {
+            alert('🔒 系统已锁定，请输入密码解锁后才能添加！');
+            return;
+        }
         const v = prompt("输入大类名称:"); 
         if(v && !db.catOrder.includes(v)) { 
             db.catOrder.push(v); 
@@ -738,6 +920,11 @@
     }
 
     async function renameParentCat(oldName, newName) {
+        if (!isUnlocked) {
+            alert('🔒 系统已锁定，请输入密码解锁后才能修改！');
+            render();
+            return;
+        }
         newName = newName.trim();
         if (!newName || oldName === newName) { render(); return; }
         if (db.catOrder.includes(newName)) { alert("该名称已存在"); render(); return; }
@@ -758,6 +945,11 @@
     }
 
     async function renameChildCat(p, oldC, newC) {
+        if (!isUnlocked) {
+            alert('🔒 系统已锁定，请输入密码解锁后才能修改！');
+            render();
+            return;
+        }
         newC = newC.trim();
         if (!newC || oldC === newC) { render(); return; }
         if (db.cats[p].includes(newC)) { alert("该名称已存在"); render(); return; }
@@ -776,6 +968,10 @@
     }
 
     async function delParentCat(p) { 
+        if (!isUnlocked) {
+            alert('🔒 系统已锁定，请输入密码解锁后才能删除！');
+            return;
+        }
         if(confirm(`确定删除大类 ${p} 及其所有子类？`)) { 
             db.catOrder = db.catOrder.filter(x => x !== p); 
             delete db.cats[p]; 
@@ -784,6 +980,10 @@
     }
 
     async function addChildCat(p) { 
+        if (!isUnlocked) {
+            alert('🔒 系统已锁定，请输入密码解锁后才能添加！');
+            return;
+        }
         const v = prompt(`在大类 [${p}] 下新增子类:`); 
         if(v) { 
             if(!db.cats[p]) db.cats[p]=[]; 
@@ -793,11 +993,19 @@
     }
 
     async function delChildCat(p, ci) { 
+        if (!isUnlocked) {
+            alert('🔒 系统已锁定，请输入密码解锁后才能删除！');
+            return;
+        }
         db.cats[p].splice(ci,1); 
         await updateDB(db); 
     }
     
     function moveParent(i, dir) {
+        if (!isUnlocked) {
+            alert('🔒 系统已锁定，请输入密码解锁后才能移动！');
+            return;
+        }
         const target = i + dir;
         if(target < 0 || target >= db.catOrder.length) return;
         const temp = db.catOrder[i];
@@ -807,6 +1015,10 @@
     }
     
     function moveChild(p, i, dir) {
+        if (!isUnlocked) {
+            alert('🔒 系统已锁定，请输入密码解锁后才能移动！');
+            return;
+        }
         const target = i + dir;
         if(target < 0 || target >= db.cats[p].length) return;
         const temp = db.cats[p][i];
@@ -826,6 +1038,10 @@
 
     document.getElementById('shiftForm').onsubmit = async (e) => {
         e.preventDefault(); 
+        if (!isUnlocked) {
+            alert('🔒 系统已锁定，请输入密码解锁后才能保存！');
+            return;
+        }
         const t = parseFloat(document.getElementById('in-total-sales').value)||0, 
               p = parseFloat(document.getElementById('in-pos-sales').value)||0, 
               df = parseFloat(document.getElementById('in-diff').value)||0;
@@ -855,6 +1071,10 @@
 
     document.getElementById('debtForm').onsubmit = async (e) => {
         e.preventDefault(); 
+        if (!isUnlocked) {
+            alert('🔒 系统已锁定，请输入密码解锁后才能保存！');
+            return;
+        }
         let items = []; 
         document.querySelectorAll('#debt-tag-rows .batch-row').forEach(row => { 
             const name = row.querySelector('input').value, 
@@ -879,6 +1099,10 @@
 
     document.getElementById('staffForm').onsubmit = async (e) => {
         e.preventDefault();
+        if (!isUnlocked) {
+            alert('🔒 系统已锁定，请输入密码解锁后才能保存！');
+            return;
+        }
         const rec = { 
             id: Date.now(), 
             date: document.getElementById('staff-date').value, 
