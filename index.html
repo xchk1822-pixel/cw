@@ -715,13 +715,17 @@ function exportExcel() {
 
 // ========== 云同步功能（Firebase）- 追加部分 ==========
 // Firebase 配置 - 需要替换成自己的
+// ========== 云同步功能（Firebase）- 追加部分 ==========
+// Firebase 配置 - 已替换为你的真实配置
 const firebaseConfig = {
-    apiKey: "YOUR_API_KEY",
-    authDomain: "YOUR_AUTH_DOMAIN",
-    projectId: "YOUR_PROJECT_ID",
-    storageBucket: "YOUR_STORAGE_BUCKET",
-    messagingSenderId: "YOUR_SENDER_ID",
-    appId: "YOUR_APP_ID"
+    apiKey: "AIzaSyC3ADmd485_ITMpwaLbLDtctrROiwLHbHw",
+    authDomain: "restaurant-cw.firebaseapp.com",
+    databaseURL: "https://restaurant-cw-default-rtdb.firebaseio.com",
+    projectId: "restaurant-cw",
+    storageBucket: "restaurant-cw.firebasestorage.app",
+    messagingSenderId: "980204506513",
+    appId: "1:980204506513:web:ae195605300782435d9e30",
+    measurementId: "G-43206TF3VJ"
 };
 
 // 动态加载 Firebase SDK
@@ -967,3 +971,4 @@ setTimeout(addCloudSyncControls, 1000);
 </script>
 </body>
 </html>
+
