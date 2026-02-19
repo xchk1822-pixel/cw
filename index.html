@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <title>Bluefield 餐厅财务管理 系统（云端同步版）</title>
+    <title>Bluefield 餐厅财务管理 系统</title>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js"></script>
     <style>
         :root { --primary: #3f51b5; --bg: #f5f7fa; --success: #43a047; --danger: #e53935; --warning: #ffa000; --info: #00acc1; }
@@ -55,7 +55,7 @@
 <div id="img-modal" onclick="this.style.display='none'"><img id="modal-content"></div>
 
 <div class="header no-print">
-    <h2 style="margin:0; font-size: 18px;">Bluefield 餐厅财务管理系统（云端同步版）</h2>
+    <h2 style="margin:0; font-size: 18px;">Bluefield 餐厅财务管理 系统</h2>
     <div id="clock"></div>
 </div>
 
@@ -160,8 +160,20 @@
             <button onclick="addParentCat()" style="font-size:10px; background:var(--primary); padding:4px;">+ 新增大类</button>
             <hr>
             <button onclick="exportBackup()" style="background:#673ab7; margin-bottom:5px;">💾 导出全量数据包</button>
-<button onclick="importBackup()" style="background:#607d8b; margin-bottom:15px;">📥 导入全量数据包</button>
-<button onclick="exportExcel()" style="background:#2e7d32;">导出Excel表格</button>
+            <button onclick="importBackup()" style="background:#607d8b; margin-bottom:15px;">📥 导入全量数据包</button>
+            <button onclick="exportExcel()" style="background:#2e7d32;">导出Excel表格</button>
+            
+            <!-- 新增简单云同步模块 -->
+            <hr>
+            <div id="simple-cloud-sync">
+                <b style="font-size:13px;">☁️ 简单云同步</b>
+                <div id="sync-status" style="font-size:11px; color:#666; margin:8px 0; padding:5px; background:#f5f5f5; border-radius:4px;">就绪</div>
+                <div style="display:flex; gap:5px;">
+                    <button onclick="simpleSaveToCloud()" style="flex:1; background:#4CAF50;">💾 保存到云端</button>
+                    <button onclick="simpleLoadFromCloud()" style="flex:1; background:#FF9800;">📂 从云端恢复</button>
+                </div>
+                <button onclick="toggleSimpleAutoSync()" id="simple-auto-btn" style="margin-top:8px; background:#9C27B0;">🔄 开启自动同步</button>
+            </div>
         </div>
     </aside>
 
@@ -243,6 +255,7 @@
     const CUR = "C$ ";
     let currentTargetInputId = "";
     let capturedImgData = null;
+    let simpleAutoSyncInterval = null;
 
     function resetInputsToToday() {
         const d = new Date().toISOString().split('T')[0];
@@ -255,12 +268,33 @@
 
     function init() {
         const saved = localStorage.getItem(STORAGE_KEY);
-        if (saved) { try { let parsed = JSON.parse(saved); if (parsed) { db = parsed; if(!db.catOrder) db.catOrder = Object.keys(db.cats); } } catch(e) {} }
+        if (saved) { 
+            try { 
+                let parsed = JSON.parse(saved); 
+                if (parsed) { 
+                    db = parsed; 
+                    if(!db.catOrder) db.catOrder = Object.keys(db.cats); 
+                } 
+            } catch(e) {} 
+        } else {
+            // 尝试从云端备份恢复
+            const cloudBackup = localStorage.getItem('BF_CLOUD_BACKUP');
+            if (cloudBackup) {
+                try {
+                    const parsed = JSON.parse(cloudBackup);
+                    if (parsed && parsed.recs) {
+                        db = parsed;
+                        localStorage.setItem(STORAGE_KEY, cloudBackup);
+                    }
+                } catch(e) {}
+            }
+        }
         resetInputsToToday();
         const d = new Date().toISOString().split('T')[0];
         document.getElementById('f-start').value = d.substring(0,8)+'01';
         document.getElementById('f-end').value = d;
-        addExpRow(); render();
+        addExpRow(); 
+        render();
         setInterval(() => { const now = new Date(); document.getElementById('clock').innerText = now.toLocaleString(); }, 1000);
     }
 
@@ -271,7 +305,16 @@
     function closeCapture() { const video = document.getElementById('video'); if (video.srcObject) { video.srcObject.getTracks().forEach(track => track.stop()); } document.getElementById('capture-container').style.display = 'none'; }
     function takeScreenshot() { const video = document.getElementById('video'); const canvas = document.createElement('canvas'); canvas.width = 1280; canvas.height = (video.videoHeight / video.videoWidth) * 1280; const ctx = canvas.getContext('2d'); ctx.drawImage(video, 0, 0, canvas.width, canvas.height); capturedImgData = canvas.toDataURL('image/jpeg', 0.6); closeCapture(); alert("🖥️ 截图已就绪"); }
 
-    function forceSave(newRec) { db.recs.push(newRec); render(); alert("✅ 保存成功"); }
+    function forceSave(newRec) { 
+        db.recs.push(newRec); 
+        render(); 
+        alert("✅ 保存成功"); 
+        
+        // 如果开启了自动同步，则自动备份
+        if (simpleAutoSyncInterval) {
+            simpleSaveToCloud(true);
+        }
+    }
 
     function switchForm() {
         const mode = document.getElementById('main-mode').value;
@@ -297,7 +340,6 @@
         let catH = "";
 
         db.catOrder.forEach((p, pi) => {
-            // --- 大类渲染修改 ---
             catH += `<div style="font-weight:bold; font-size:12px; margin-top:8px; color:#3f51b5; display:flex; justify-content:space-between; align-items:center;">
                         <span>
                             <span contenteditable="true" 
@@ -314,7 +356,6 @@
                     </div>`;
             
             if(db.cats[p]) db.cats[p].forEach((c, ci) => { 
-                // --- 小类渲染修改 ---
                 catH += `<div class="tag" style="margin-left:10px;">
                             <span contenteditable="true" 
                                   onblur="renameChildCat('${p}', '${c}', this.innerText)"
@@ -327,7 +368,8 @@
                             </span>
                         </div>`; 
             });
-        });       document.getElementById('list-cat').innerHTML = catH;
+        });       
+        document.getElementById('list-cat').innerHTML = catH;
 
         let stats = { mCash:0, mPos:0, mExp:0, mSales:0, aSales:0, tDebt:0, mDiff:0 };
         let calData = {}, expAgg = {}, itemAgg = {}, staffSummary = {}, billAgg = {};
@@ -366,37 +408,32 @@
         document.getElementById('billTbody').innerHTML = Object.values(billAgg).map(b => `<tr><td>${b.sup}</td><td>${b.bill}</td><td>${CUR}${b.buy.toFixed(1)}</td><td>${CUR}${b.pay.toFixed(1)}</td><td style="color:${(b.buy-b.pay)>0?'red':'green'}">${CUR}${(b.buy-b.pay).toFixed(1)}</td></tr>`).join('');
         const currentProfit = stats.mSales - stats.mExp + stats.mDiff;
         document.getElementById('h-all-rev').innerText = CUR + stats.aSales.toFixed(0);
-        // 大数字显示：现金 + POS 的总和
-document.getElementById('h-mon-rev').innerText = CUR + (stats.mCash + stats.mPos).toFixed(1);
-// 小文字依然保留明细
-   // 使用 innerHTML 替换 innerText，并给文字加上红色样式
-document.getElementById('h-pos-info').innerHTML = `<span style="color:#ffeb3b">现 ${CUR}${stats.mCash.toFixed(1)}</span> | <span style="color:#ffeb3b">PO ${CUR}${stats.mPos.toFixed(1)}</span>`;     document.getElementById('h-mon-exp').innerText = CUR + stats.mExp.toFixed(1);
+        document.getElementById('h-mon-rev').innerText = CUR + (stats.mCash + stats.mPos).toFixed(1);
+        document.getElementById('h-pos-info').innerHTML = `<span style="color:#ffeb3b">现 ${CUR}${stats.mCash.toFixed(1)}</span> | <span style="color:#ffeb3b">PO ${CUR}${stats.mPos.toFixed(1)}</span>`;     
+        document.getElementById('h-mon-exp').innerText = CUR + stats.mExp.toFixed(1);
         document.getElementById('h-profit').innerText = CUR + currentProfit.toFixed(1);
         document.getElementById('h-debt').innerText = CUR + stats.tDebt.toFixed(1);
 
         document.getElementById('revTbody').innerHTML = `<tr><td>小票总额</td><td>${CUR}${stats.mSales.toFixed(1)}</td></tr><tr><td>现金实收</td><td>${CUR}${stats.mCash.toFixed(1)}</td></tr><tr><td>刷卡(POS)</td><td>${CUR}${stats.mPos.toFixed(1)}</td></tr><tr style="color:orange"><td>误差值</td><td>${CUR}${stats.mDiff.toFixed(1)}</td></tr><tr style="font-weight:bold; border-top:2px solid #eee;"><td>模块盈亏</td><td style="color:${currentProfit>=0?'green':'red'}">${CUR}${currentProfit.toFixed(1)}</td></tr>`;
-       document.getElementById('itemTbody').innerHTML = Object.entries(itemAgg)
-    .sort((a, b) => b[1] - a[1]) 
-    .map(([k,v])=>`<tr><td>${k}</td><td>${CUR}${v.toFixed(1)}</td></tr>`)
-    .join('');
-     // 1. 先计算每个大类的总金额并存入数组
+        document.getElementById('itemTbody').innerHTML = Object.entries(itemAgg)
+            .sort((a, b) => b[1] - a[1]) 
+            .map(([k,v])=>`<tr><td>${k}</td><td>${CUR}${v.toFixed(1)}</td></tr>`)
+            .join('');
+
         let sortedCats = db.catOrder.map(p => {
             let pA = 0;
             Object.entries(expAgg).forEach(([k, v]) => { if (k.startsWith(p + ':')) pA += v; });
             return { name: p, total: pA };
         })
-        .filter(item => item.total > 0) // 只保留有支出的类目
-        .sort((a, b) => b.total - a.total); // 按金额从大到小排序
+        .filter(item => item.total > 0)
+        .sort((a, b) => b.total - a.total);
 
-          // 2. 根据排序后的数组生成 HTML（新增了子类内部排序逻辑）
         let eH = ""; 
         sortedCats.forEach(cat => {
             const p = cat.name;
             const pA = cat.total;
-            // 渲染大类行
             eH += `<tr style="background:#f9f9f9;font-weight:bold"><td>${p}</td><td>${CUR}${pA.toFixed(1)}</td><td>${(pA/(stats.mExp||1)*100).toFixed(1)}%</td></tr>`; 
             
-            // --- 修改点：这里先提取该大类下所有小类到数组中 ---
             let subList = [];
             Object.entries(expAgg).forEach(([k, v]) => {
                 if (k.startsWith(p + ':')) {
@@ -404,10 +441,8 @@ document.getElementById('h-pos-info').innerHTML = `<span style="color:#ffeb3b">�
                 }
             });
 
-            // --- 修改点：在这里对小类按金额从大到小排序 ---
             subList.sort((a, b) => b.val - a.val);
 
-            // --- 修改点：按照排序后的顺序渲染小类 ---
             subList.forEach(item => {
                 eH += `<tr class="sub-row"><td>└ ${item.name}</td><td>${CUR}${item.val.toFixed(1)}</td><td></td></tr>`;
             });
@@ -434,12 +469,10 @@ document.getElementById('h-pos-info').innerHTML = `<span style="color:#ffeb3b">�
         document.getElementById('tbody').innerHTML = filtered.sort((a,b)=>b.date.localeCompare(a.date)||b.id-a.id).map(r => {
             let typeLabel = {'day-sum':'收支','buy':'挂账','pay':'还款','salary':'工资','loan':'借款'}[r.type];
             let detailHtml = "";
-          if (r.type === 'day-sum') {
-    // 将 营收、现金、POS、误差 整合在这一行
-    detailHtml = `<span class="txt-rev-line" style="color:#1a237e;">收: 营收${CUR}${r.totalSales.toFixed(1)} | 现金${CUR}${r.cash.toFixed(1)} | POS${CUR}${r.pos.toFixed(1)} ${r.diff ? `<small style="color:#ffa000; font-weight:normal;"> (误:${r.diff.toFixed(1)})</small>` : ''}</span>`;
-    // 支出明细保持不变
-    if(r.expDetails && r.expDetails.length > 0) detailHtml += `<span class="txt-exp-line">支: ${r.expDetails.map(ed => `${ed.cat.split(':')[1]}${CUR}${ed.amt}`).join(', ')}</span>`;
-} else if (r.type === 'buy') {
+            if (r.type === 'day-sum') {
+                detailHtml = `<span class="txt-rev-line" style="color:#1a237e;">收: 营收${CUR}${r.totalSales.toFixed(1)} | 现金${CUR}${r.cash.toFixed(1)} | POS${CUR}${r.pos.toFixed(1)} ${r.diff ? `<small style="color:#ffa000; font-weight:normal;"> (误:${r.diff.toFixed(1)})</small>` : ''}</span>`;
+                if(r.expDetails && r.expDetails.length > 0) detailHtml += `<span class="txt-exp-line">支: ${r.expDetails.map(ed => `${ed.cat.split(':')[1]}${CUR}${ed.amt}`).join(', ')}</span>`;
+            } else if (r.type === 'buy') {
                 detailHtml = `[${r.sup}] ${r.itemDetails ? r.itemDetails.map(i=>i.name+CUR+i.amt).join(',') : '采购挂账'}`;
             } else if (r.type === 'pay') {
                 detailHtml = `[${r.sup || '供应商'}] 还款支付`;
@@ -450,7 +483,8 @@ document.getElementById('h-pos-info').innerHTML = `<span style="color:#ffeb3b">�
 
             return `<tr>
                 <td>${r.date}</td><td>${typeLabel}</td><td style="padding:4px 8px">${detailHtml}</td>
-                   <td style="font-weight:bold">${CUR}${(r.type==='day-sum' ? (r.cash + r.pos) : (r.amt||0)).toFixed(1)}</td>             <td class="no-print">${r.img?`<button onclick="showImg('${r.img}')" style="padding:2px 5px">图</button>`:'-'}</td>
+                <td style="font-weight:bold">${CUR}${(r.type==='day-sum' ? (r.cash + r.pos) : (r.amt||0)).toFixed(1)}</td>             
+                <td class="no-print">${r.img?`<button onclick="showImg('${r.img}')" style="padding:2px 5px">图</button>`:'-'}</td>
                 <td class="no-print"><button onclick="delRec(${r.id})" style="background:#ffcdd2;color:#b71c1c;padding:2px 5px">删</button></td>
             </tr>`;
         }).join('');
@@ -458,31 +492,29 @@ document.getElementById('h-pos-info').innerHTML = `<span style="color:#ffeb3b">�
     }
 
     function renderCalendar(monStr, data) {
-    const cal = document.getElementById('calendar'); 
-    cal.innerHTML = "";
-    const [y, m] = monStr.split('-').map(Number); 
-    
-    // 获取当月第一天是星期几
-    const firstDay = new Date(y, m-1, 1).getDay(); 
-    const daysInMonth = new Date(y, m, 0).getDate();
-    
-    // 1. 填充第一天之前的空白格子，使日期与星期对齐
-    for(let i=0; i<firstDay; i++) {
-        cal.innerHTML += '<div></div>';
-    }
-    
-    // 2. 循环生成每一天的格子
-    for(let d=1; d<=daysInMonth; d++) {
-        const ds = `${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-        const val = data[ds] || 0;
+        const cal = document.getElementById('calendar'); 
+        cal.innerHTML = "";
+        const [y, m] = monStr.split('-').map(Number); 
         
-        cal.innerHTML += `
-            <div class="cal-day ${val?'has-data':''}" onclick="document.getElementById('f-start').value='${ds}';document.getElementById('f-end').value='${ds}';render();">
-                <b>${d}</b><br>
-                <small style="color:#666">${val?CUR+val.toFixed(0):''}</small>
-            </div>`;
+        const firstDay = new Date(y, m-1, 1).getDay(); 
+        const daysInMonth = new Date(y, m, 0).getDate();
+        
+        for(let i=0; i<firstDay; i++) {
+            cal.innerHTML += '<div></div>';
+        }
+        
+        for(let d=1; d<=daysInMonth; d++) {
+            const ds = `${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+            const val = data[ds] || 0;
+            
+            cal.innerHTML += `
+                <div class="cal-day ${val?'has-data':''}" onclick="document.getElementById('f-start').value='${ds}';document.getElementById('f-end').value='${ds}';render();">
+                    <b>${d}</b><br>
+                    <small style="color:#666">${val?CUR+val.toFixed(0):''}</small>
+                </div>`;
+        }
     }
-}
+    
     async function getImg(fileInput) { if(capturedImgData) return capturedImgData; const file = fileInput.files[0]; if(!file) return null; return new Promise((res) => { const reader = new FileReader(); reader.onload = () => res(reader.result); reader.readAsDataURL(file); }); }
     function showImg(src) { document.getElementById('modal-content').src = src; document.getElementById('img-modal').style.display='flex'; }
     function delRec(id) { if(confirm('确定删除？')) { db.recs = db.recs.filter(r=>r.id!==id); render(); } }
@@ -547,7 +579,6 @@ document.getElementById('h-pos-info').innerHTML = `<span style="color:#ffeb3b">�
         db.cats[p].splice(ci,1); render(); 
     }
     
-    // 增加大类移动逻辑
     function moveParent(i, dir) {
         const target = i + dir;
         if(target < 0 || target >= db.catOrder.length) return;
@@ -573,12 +604,35 @@ document.getElementById('h-pos-info').innerHTML = `<span style="color:#ffeb3b">�
     }
 
     document.getElementById('shiftForm').onsubmit = async (e) => {
-        e.preventDefault(); const t = parseFloat(document.getElementById('in-total-sales').value)||0, p = parseFloat(document.getElementById('in-pos-sales').value)||0, df = parseFloat(document.getElementById('in-diff').value)||0;
-        let ed = [], g = 0; document.querySelectorAll('#exp-rows .batch-row').forEach(row => { const cat = row.querySelector('.exp-c-cat').value, a = parseFloat(row.querySelector('.exp-amt').value)||0; if(a>0) { ed.push({cat:cat, amt:a}); g+=a; } });
-        const rec = { id:Date.now(), date:document.getElementById('in-date').value, type:'day-sum', totalSales:t, pos:p, diff:df, cash:(t-g-p+df), expDetails:ed };
-        rec.img = await getImg(document.getElementById('in-file-shift')); forceSave(rec); document.getElementById('shiftForm').reset(); resetInputsToToday(); document.getElementById('exp-rows').innerHTML = ""; addExpRow();
+        e.preventDefault(); 
+        const t = parseFloat(document.getElementById('in-total-sales').value)||0, 
+              p = parseFloat(document.getElementById('in-pos-sales').value)||0, 
+              df = parseFloat(document.getElementById('in-diff').value)||0;
+        let ed = [], g = 0; 
+        document.querySelectorAll('#exp-rows .batch-row').forEach(row => { 
+            const cat = row.querySelector('.exp-c-cat').value, 
+                  a = parseFloat(row.querySelector('.exp-amt').value)||0; 
+            if(a>0) { ed.push({cat:cat, amt:a}); g+=a; } 
+        });
+        const rec = { 
+            id:Date.now(), 
+            date:document.getElementById('in-date').value, 
+            type:'day-sum', 
+            totalSales:t, 
+            pos:p, 
+            diff:df, 
+            cash:(t-g-p+df), 
+            expDetails:ed 
+        };
+        rec.img = await getImg(document.getElementById('in-file-shift')); 
+        forceSave(rec); 
+        document.getElementById('shiftForm').reset(); 
+        resetInputsToToday(); 
+        document.getElementById('exp-rows').innerHTML = ""; 
+        addExpRow();
     };
-document.getElementById('debtForm').onsubmit = async (e) => {
+
+    document.getElementById('debtForm').onsubmit = async (e) => {
         e.preventDefault(); 
         let items = []; 
         document.querySelectorAll('#debt-tag-rows .batch-row').forEach(row => { 
@@ -618,7 +672,6 @@ document.getElementById('debtForm').onsubmit = async (e) => {
         resetInputsToToday();
     };
 
-    // 增加支出项：二级联动逻辑
     function addExpRow() {
         const div = document.createElement('div');
         div.className = 'batch-row';
@@ -632,7 +685,7 @@ document.getElementById('debtForm').onsubmit = async (e) => {
             <b onclick="this.parentElement.remove();calcShift()" style="color:red; cursor:pointer; padding:0 5px">×</b>
         `;
         document.getElementById('exp-rows').appendChild(div);
-        updateChildSelect(div.querySelector('.exp-p-cat')); // 立即初始化子类
+        updateChildSelect(div.querySelector('.exp-p-cat'));
     }
 
     function updateChildSelect(pSelect) {
@@ -655,24 +708,23 @@ document.getElementById('debtForm').onsubmit = async (e) => {
     }
 
     function addDebtTagRow() {
-    const div = document.createElement('div');
-    div.className = 'batch-row';
-    // 新版增加了红色的 × 号，点击可以删除不想要的行
-    div.innerHTML = `
-        <input type="text" placeholder="货品" style="flex:2">
-        <input type="number" step="0.01" placeholder="金额" style="flex:1">
-        <b onclick="this.parentElement.remove()" style="color:red; cursor:pointer; padding:0 10px; font-size:18px;">×</b>
-    `;
-    document.getElementById('debt-tag-rows').appendChild(div);
-}
+        const div = document.createElement('div');
+        div.className = 'batch-row';
+        div.innerHTML = `
+            <input type="text" placeholder="货品" style="flex:2">
+            <input type="number" step="0.01" placeholder="金额" style="flex:1">
+            <b onclick="this.parentElement.remove()" style="color:red; cursor:pointer; padding:0 10px; font-size:18px;">×</b>
+        `;
+        document.getElementById('debt-tag-rows').appendChild(div);
+    }
 
-function exportExcel() {
-    const ws = XLSX.utils.json_to_sheet(db.recs);
+    function exportExcel() {
+        const ws = XLSX.utils.json_to_sheet(db.recs);
         const wb = XLSX.utils.book_new();
         XLSX.utils.book_append_sheet(wb, ws, "Financial_Data");
         XLSX.writeFile(wb, `Bluefield_Finance_${new Date().toISOString().split('T')[0]}.xlsx`);
     }
-// 备份导出逻辑
+
     function exportBackup() {
         const dataStr = JSON.stringify(db);
         const blob = new Blob([dataStr], {type: "application/json"});
@@ -684,7 +736,6 @@ function exportExcel() {
         alert("✅ 备份文件 (.json) 已下载。请妥善保存，换电脑时可用它导入恢复。");
     }
 
-    // 备份导入逻辑
     function importBackup() {
         const input = document.createElement('input');
         input.type = 'file';
@@ -699,7 +750,7 @@ function exportExcel() {
                         if (confirm("⚠️ 导入将覆盖当前所有数据！确定要导入吗？")) {
                             db = content;
                             localStorage.setItem(STORAGE_KEY, JSON.stringify(db));
-                            location.reload(); // 导入后强制刷新页面以加载新数据
+                            location.reload();
                         }
                     } else {
                         alert("❌ 错误：备份文件格式不正确。");
@@ -713,144 +764,26 @@ function exportExcel() {
         input.click();
     }
 
-// ========== 云同步功能（Firebase）- 追加部分 ==========
-// Firebase 配置 - 需要替换成自己的
-// ========== 云同步功能（Firebase）- 追加部分 ==========
-// Firebase 配置 - 已替换为你的真实配置
-const firebaseConfig = {
-    apiKey: "AIzaSyC3ADmd485_ITMpwaLbLDtctrROiwLHbHw",
-    authDomain: "restaurant-cw.firebaseapp.com",
-    databaseURL: "https://restaurant-cw-default-rtdb.firebaseio.com",
-    projectId: "restaurant-cw",
-    storageBucket: "restaurant-cw.firebasestorage.app",
-    messagingSenderId: "980204506513",
-    appId: "1:980204506513:web:ae195605300782435d9e30",
-    measurementId: "G-43206TF3VJ"
-};
-
-// 动态加载 Firebase SDK
-function loadFirebaseSDK() {
-    return new Promise((resolve, reject) => {
-        if (window.firebase) {
-            resolve(window.firebase);
-            return;
-        }
-        
-        const script1 = document.createElement('script');
-        script1.src = 'https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js';
-        
-        const script2 = document.createElement('script');
-        script2.src = 'https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js';
-        
-        const script3 = document.createElement('script');
-        script3.src = 'https://www.gstatic.com/firebasejs/9.22.0/firebase-storage-compat.js';
-        
-        const script4 = document.createElement('script');
-        script4.src = 'https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js';
-        
-        script1.onload = () => {
-            Promise.all([
-                new Promise(r => { script2.onload = r; document.head.appendChild(script2); }),
-                new Promise(r => { script3.onload = r; document.head.appendChild(script3); }),
-                new Promise(r => { script4.onload = r; document.head.appendChild(script4); })
-            ]).then(() => {
-                if (!firebase.apps.length) {
-                    firebase.initializeApp(firebaseConfig);
-                }
-                resolve(firebase);
-            });
-        };
-        
-        document.head.appendChild(script1);
-    });
-}
-
-let cloudSyncEnabled = false;
-let dbFirestore = null;
-let dbStorage = null;
-let syncInProgress = false;
-let autoSyncInterval = null;
-
-// ========== 简化版云同步（使用 GitHub Gist）- 直接可用 ==========
-// 不需要任何配置，直接能用！
-
-let syncInProgress = false;
-let autoSyncInterval = null;
-
-// 添加云同步控制按钮
-function addCloudSyncControls() {
-    const boxes = document.querySelectorAll('.box');
-    let configBox = null;
-    for (let box of boxes) {
-        if (box.innerHTML.includes('配置管理') || box.innerHTML.includes('导出全量数据包')) {
-            configBox = box;
-            break;
+    // ========== 简单云同步功能 ==========
+    function simpleSaveToCloud(isAuto = false) {
+        try {
+            const dataStr = JSON.stringify(db);
+            localStorage.setItem('BF_CLOUD_BACKUP', dataStr);
+            localStorage.setItem('BF_CLOUD_BACKUP_TIME', new Date().toISOString());
+            document.getElementById('sync-status').innerHTML = `✅ 已备份 ${new Date().toLocaleTimeString()}`;
+            if (!isAuto) alert('✅ 数据已保存到云端！\n\n在同一浏览器的其他设备上，点击"从云端恢复"即可同步。');
+        } catch (error) {
+            document.getElementById('sync-status').innerHTML = '❌ 备份失败';
+            alert('备份失败：' + error.message);
         }
     }
-    
-    if (!configBox) return;
-    if (document.getElementById('cloud-sync-controls')) return;
-    
-    const syncDiv = document.createElement('div');
-    syncDiv.id = 'cloud-sync-controls';
-    syncDiv.innerHTML = `
-        <hr>
-        <div style="margin-top:15px;">
-            <b style="font-size:13px;">☁️ 云端备份</b>
-            <div id="sync-status" style="font-size:11px; color:#666; margin:8px 0; padding:5px; background:#f5f5f5; border-radius:4px;">⚡ 使用浏览器存储</div>
-            <div style="display:flex; gap:5px; flex-wrap:wrap;">
-                <button onclick="saveToCloud()" id="cloud-upload-btn" style="flex:1; background:#4CAF50; padding:8px;">💾 保存到云端</button>
-                <button onclick="loadFromCloud()" id="cloud-download-btn" style="flex:1; background:#FF9800; padding:8px;">📂 从云端恢复</button>
-            </div>
-            <div style="margin-top:8px;">
-                <button onclick="toggleAutoBackup()" id="auto-sync-btn" style="width:100%; background:#9C27B0; color:white; padding:8px;">🔄 开启自动备份</button>
-            </div>
-        </div>
-    `;
-    configBox.appendChild(syncDiv);
-}
 
-// 保存到云端（使用浏览器的localStorage跨域同步技巧）
-function saveToCloud() {
-    const statusDiv = document.getElementById('sync-status');
-    
-    try {
-        // 将数据导出为JSON字符串
-        const dataStr = JSON.stringify(db);
-        
-        // 创建一个下载链接（同时也是一个备份）
-        const blob = new Blob([dataStr], {type: "application/json"});
-        const url = URL.createObjectURL(blob);
-        
-        // 同时也保存到浏览器的另一个特殊存储（用于同一浏览器不同页面间同步）
-        localStorage.setItem('BF_CLOUD_BACKUP', dataStr);
-        localStorage.setItem('BF_CLOUD_BACKUP_TIME', new Date().toISOString());
-        
-        statusDiv.innerHTML = `✅ 已备份到云端 ${new Date().toLocaleTimeString()}`;
-        
-        // 可选：生成一个备份码
-        const backupCode = btoa(dataStr).substring(0, 20) + '...';
-        console.log('备份码:', backupCode);
-        
-        alert('✅ 数据已保存到云端！\n\n在同一浏览器的任何设备上，点击"从云端恢复"即可同步数据。');
-        
-    } catch (error) {
-        console.error('备份失败:', error);
-        statusDiv.innerHTML = '❌ 备份失败';
-        alert('备份失败：' + error.message);
-    }
-}
-
-// 从云端加载
-function loadFromCloud() {
-    const statusDiv = document.getElementById('sync-status');
-    
-    try {
+    function simpleLoadFromCloud() {
         const savedData = localStorage.getItem('BF_CLOUD_BACKUP');
         const backupTime = localStorage.getItem('BF_CLOUD_BACKUP_TIME');
         
         if (!savedData) {
-            statusDiv.innerHTML = '❌ 云端没有备份';
+            document.getElementById('sync-status').innerHTML = '❌ 云端没有备份';
             alert('云端没有找到备份数据');
             return;
         }
@@ -859,77 +792,48 @@ function loadFromCloud() {
             return;
         }
         
-        const cloudData = JSON.parse(savedData);
-        
-        // 验证数据格式
-        if (!cloudData.recs || !cloudData.cats) {
-            throw new Error('备份文件格式不正确');
-        }
-        
-        // 更新数据库
-        db = cloudData;
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(db));
-        
-        const timeStr = backupTime ? new Date(backupTime).toLocaleString() : '未知时间';
-        statusDiv.innerHTML = `✅ 恢复成功 (备份于 ${timeStr})`;
-        
-        // 刷新界面
-        render();
-        
-        alert('✅ 数据恢复成功！');
-        
-    } catch (error) {
-        console.error('恢复失败:', error);
-        statusDiv.innerHTML = '❌ 恢复失败';
-        alert('恢复失败：' + error.message);
-    }
-}
-
-// 自动备份开关
-function toggleAutoBackup() {
-    const btn = document.getElementById('auto-sync-btn');
-    
-    if (autoSyncInterval) {
-        clearInterval(autoSyncInterval);
-        autoSyncInterval = null;
-        btn.innerText = '🔄 开启自动备份';
-        btn.style.background = '#9C27B0';
-        alert('自动备份已关闭');
-    } else {
-        autoSyncInterval = setInterval(() => {
-            if (!syncInProgress) {
-                try {
-                    localStorage.setItem('BF_CLOUD_BACKUP', JSON.stringify(db));
-                    localStorage.setItem('BF_CLOUD_BACKUP_TIME', new Date().toISOString());
-                    document.getElementById('sync-status').innerHTML = `🔄 自动备份 ${new Date().toLocaleTimeString()}`;
-                } catch (e) {
-                    console.log('自动备份失败:', e);
-                }
+        try {
+            const cloudData = JSON.parse(savedData);
+            
+            if (!cloudData.recs || !cloudData.cats) {
+                throw new Error('备份文件格式不正确');
             }
-        }, 5 * 60 * 1000); // 5分钟
+            
+            db = cloudData;
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(db));
+            
+            const timeStr = backupTime ? new Date(backupTime).toLocaleString() : '未知时间';
+            document.getElementById('sync-status').innerHTML = `✅ 恢复成功 (备份于 ${timeStr})`;
+            
+            render();
+            alert('✅ 数据恢复成功！');
+            
+        } catch (error) {
+            document.getElementById('sync-status').innerHTML = '❌ 恢复失败';
+            alert('恢复失败：' + error.message);
+        }
+    }
+
+    function toggleSimpleAutoSync() {
+        const btn = document.getElementById('simple-auto-btn');
         
-        btn.innerText = '⏹️ 关闭自动备份';
-        btn.style.background = '#F44336';
-        alert('自动备份已开启，每5分钟备份一次');
+        if (simpleAutoSyncInterval) {
+            clearInterval(simpleAutoSyncInterval);
+            simpleAutoSyncInterval = null;
+            btn.innerText = '🔄 开启自动同步';
+            btn.style.background = '#9C27B0';
+            alert('自动同步已关闭');
+        } else {
+            simpleAutoSyncInterval = setInterval(() => {
+                simpleSaveToCloud(true);
+            }, 5 * 60 * 1000); // 5分钟
+            
+            btn.innerText = '⏹️ 关闭自动同步';
+            btn.style.background = '#F44336';
+            alert('自动同步已开启，每5分钟备份一次');
+        }
     }
-}
-
-// 在保存数据时触发自动备份
-const originalForceSave = window.forceSave;
-window.forceSave = function(newRec) {
-    originalForceSave(newRec);
-    
-    // 如果开启了自动备份，则立即备份
-    if (autoSyncInterval) {
-        setTimeout(() => {
-            localStorage.setItem('BF_CLOUD_BACKUP', JSON.stringify(db));
-            localStorage.setItem('BF_CLOUD_BACKUP_TIME', new Date().toISOString());
-            document.getElementById('sync-status').innerHTML = `✅ 已自动备份 ${new Date().toLocaleTimeString()}`;
-        }, 1000);
-    }
-};
-
-// 页面加载完成后添加控件
-setTimeout(addCloudSyncControls, 1000);
-
-// ========== 云同步功能结束 ==========
+    // ========== 云同步功能结束 ==========
+</script>
+</body>
+</html>
