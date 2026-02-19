@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <title>Bluefield 餐厅财务管理 系统</title>
+    <title>Bluefield 餐厅财务管理 系统（云端同步版）</title>
     <script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js"></script>
     <style>
         :root { --primary: #3f51b5; --bg: #f5f7fa; --success: #43a047; --danger: #e53935; --warning: #ffa000; --info: #00acc1; }
@@ -55,13 +55,14 @@
 <div id="img-modal" onclick="this.style.display='none'"><img id="modal-content"></div>
 
 <div class="header no-print">
-    <h2 style="margin:0; font-size: 18px;">Bluefield 餐厅财务管理 系统</h2>
+    <h2 style="margin:0; font-size: 18px;">Bluefield 餐厅财务管理系统（云端同步版）</h2>
     <div id="clock"></div>
 </div>
 
 <div class="grid-5 no-print">
     <div class="card bg-total"><div>累计营业总额</div><div class="val-big" id="h-all-rev">C$ 0</div><div class="val-small">所有单据总和</div></div>
-    <div class="card bg-rev"><div>区间营收总计</div><div class="val-big" id="h-mon-rev">C$ 0</div><div class="val-small" id="h-pos-info">现 C$ 0 | PO C$ 0</div></div>    <div class="card bg-exp"><div>区间累计支出</div><div class="val-big" id="h-mon-exp">C$ 0</div><div class="val-small">仅包含营业支出及还款</div></div>
+    <div class="card bg-rev"><div>区间营收总计</div><div class="val-big" id="h-mon-rev">C$ 0</div><div class="val-small" id="h-pos-info">现 C$ 0 | PO C$ 0</div></div>
+    <div class="card bg-exp"><div>区间累计支出</div><div class="val-big" id="h-mon-exp">C$ 0</div><div class="val-small">仅包含营业支出及还款</div></div>
     <div class="card bg-profit"><div>区间总盈亏</div><div class="val-big" id="h-profit">C$ 0</div><div class="val-small" style="color:#fff">总额 - 支出 + 误差</div></div>
     <div class="card bg-debt"><div>应付总欠款</div><div class="val-big" id="h-debt">C$ 0</div><div class="val-small" style="color:#ffeb3b">供应商待结总额</div></div>
 </div>
@@ -69,21 +70,22 @@
 <div class="main-layout">
     <aside class="no-print">
         <div class="box">
-    <b style="font-size:14px; color:var(--primary);">🗓️ 月度日历</b>
-    <input type="month" id="cal-picker" onchange="render()">
-    
-    <div class="calendar-grid" style="font-weight:bold; background:#e8eaf6; border-radius:4px; margin-bottom:5px; min-height:auto; text-align:center;">
-        <div style="color:var(--danger); padding:5px 0;">日</div>
-        <div style="padding:5px 0;">一</div>
-        <div style="padding:5px 0;">二</div>
-        <div style="padding:5px 0;">三</div>
-        <div style="padding:5px 0;">四</div>
-        <div style="padding:5px 0;">五</div>
-        <div style="color:var(--danger); padding:5px 0;">六</div>
-    </div>
-    
-    <div id="calendar" class="calendar-grid"></div>
-</div>
+            <b style="font-size:14px; color:var(--primary);">🗓️ 月度日历</b>
+            <input type="month" id="cal-picker" onchange="render()">
+            
+            <div class="calendar-grid" style="font-weight:bold; background:#e8eaf6; border-radius:4px; margin-bottom:5px; min-height:auto; text-align:center;">
+                <div style="color:var(--danger); padding:5px 0;">日</div>
+                <div style="padding:5px 0;">一</div>
+                <div style="padding:5px 0;">二</div>
+                <div style="padding:5px 0;">三</div>
+                <div style="padding:5px 0;">四</div>
+                <div style="padding:5px 0;">五</div>
+                <div style="color:var(--danger); padding:5px 0;">六</div>
+            </div>
+            
+            <div id="calendar" class="calendar-grid"></div>
+        </div>
+        
         <div class="box">
             <b style="font-size:14px;">数据录入与模块切换</b>
             <select id="main-mode" onchange="switchForm()">
@@ -163,16 +165,10 @@
             <button onclick="importBackup()" style="background:#607d8b; margin-bottom:15px;">📥 导入全量数据包</button>
             <button onclick="exportExcel()" style="background:#2e7d32;">导出Excel表格</button>
             
-            <!-- 新增简单云同步模块 -->
+            <!-- Firebase 云端同步状态 -->
             <hr>
-            <div id="simple-cloud-sync">
-                <b style="font-size:13px;">☁️ 简单云同步</b>
-                <div id="sync-status" style="font-size:11px; color:#666; margin:8px 0; padding:5px; background:#f5f5f5; border-radius:4px;">就绪</div>
-                <div style="display:flex; gap:5px;">
-                    <button onclick="simpleSaveToCloud()" style="flex:1; background:#4CAF50;">💾 保存到云端</button>
-                    <button onclick="simpleLoadFromCloud()" style="flex:1; background:#FF9800;">📂 从云端恢复</button>
-                </div>
-                <button onclick="toggleSimpleAutoSync()" id="simple-auto-btn" style="margin-top:8px; background:#9C27B0;">🔄 开启自动同步</button>
+            <div style="margin-top:10px; padding:8px; background:#e8f5e9; border-radius:4px; font-size:12px;" id="cloud-status">
+                ☁️ 云端同步: 连接中...
             </div>
         </div>
     </aside>
@@ -250,13 +246,177 @@
 </div>
 
 <script>
+    // ==================== Firebase 配置（你的真实配置）====================
+    const firebaseConfig = {
+        apiKey: "AIzaSyC3ADmd485_ITMpwaLbLDtctrROiwLHbHw",
+        authDomain: "restaurant-cw.firebaseapp.com",
+        databaseURL: "https://restaurant-cw-default-rtdb.firebaseio.com",
+        projectId: "restaurant-cw",
+        storageBucket: "restaurant-cw.firebasestorage.app",
+        messagingSenderId: "980204506513",
+        appId: "1:980204506513:web:ae195605300782435d9e30",
+        measurementId: "G-43206TF3VJ"
+    };
+
+    // ==================== 全局变量 ====================
     const STORAGE_KEY = "BF_DB_V1299";
-    let db = { recs: [], cats: {"肉类":["鸡肉","牛肉"],"外卖":["外卖"],"杂费":["其他"]}, sups: ['默认供应商'], staffs: ['默认员工'], catOrder: ["肉类","外卖","杂费"] };
     const CUR = "C$ ";
     let currentTargetInputId = "";
     let capturedImgData = null;
-    let simpleAutoSyncInterval = null;
+    
+    // 默认数据
+    let db = { 
+        recs: [], 
+        cats: {"肉类":["鸡肉","牛肉"],"外卖":["外卖"],"杂费":["其他"]}, 
+        sups: ['默认供应商'], 
+        staffs: ['默认员工'], 
+        catOrder: ["肉类","外卖","杂费"] 
+    };
 
+    // Firebase 相关
+    let firebaseApp = null;
+    let firestore = null;
+    let firebaseLoaded = false;
+    let syncInProgress = false;
+    let autoSyncInterval = null;
+
+    // ==================== Firebase 初始化 ====================
+    async function initFirebase() {
+        try {
+            document.getElementById('cloud-status').innerHTML = '☁️ 云端同步: 加载SDK...';
+            
+            // 加载 Firebase SDK
+            await loadFirebaseSDK();
+            
+            // 初始化 Firebase
+            if (!firebase.apps.length) {
+                firebaseApp = firebase.initializeApp(firebaseConfig);
+            } else {
+                firebaseApp = firebase.app();
+            }
+            
+            firestore = firebase.firestore();
+            
+            // 匿名登录（不需要用户操作）
+            await firebase.auth().signInAnonymously();
+            
+            firebaseLoaded = true;
+            document.getElementById('cloud-status').innerHTML = '☁️ 云端同步: ✅ 已连接';
+            
+            // 从云端加载数据
+            await loadFromCloud();
+            
+        } catch (error) {
+            console.error('Firebase 初始化失败:', error);
+            document.getElementById('cloud-status').innerHTML = '☁️ 云端同步: ❌ 连接失败，使用本地存储';
+            // 失败时使用本地数据
+            loadFromLocal();
+        }
+    }
+
+    // 加载 Firebase SDK
+    function loadFirebaseSDK() {
+        return new Promise((resolve, reject) => {
+            if (window.firebase) {
+                resolve();
+                return;
+            }
+            
+            const script1 = document.createElement('script');
+            script1.src = 'https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js';
+            
+            script1.onload = () => {
+                const script2 = document.createElement('script');
+                script2.src = 'https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js';
+                
+                const script3 = document.createElement('script');
+                script3.src = 'https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js';
+                
+                Promise.all([
+                    new Promise(r => { script2.onload = r; document.head.appendChild(script2); }),
+                    new Promise(r => { script3.onload = r; document.head.appendChild(script3); })
+                ]).then(resolve).catch(reject);
+            };
+            
+            script1.onerror = reject;
+            document.head.appendChild(script1);
+        });
+    }
+
+    // ==================== 数据同步函数 ====================
+    async function saveToCloud() {
+        if (!firebaseLoaded || !firestore || syncInProgress) return false;
+        
+        try {
+            syncInProgress = true;
+            await firestore.collection('financeData').doc('mainData').set({
+                ...db,
+                lastSync: new Date().toISOString()
+            });
+            document.getElementById('cloud-status').innerHTML = '☁️ 云端同步: ✅ 已同步 ' + new Date().toLocaleTimeString();
+            return true;
+        } catch (error) {
+            console.error('保存到云端失败:', error);
+            document.getElementById('cloud-status').innerHTML = '☁️ 云端同步: ⚠️ 同步失败';
+            return false;
+        } finally {
+            syncInProgress = false;
+        }
+    }
+
+    async function loadFromCloud() {
+        if (!firebaseLoaded || !firestore) return false;
+        
+        try {
+            const doc = await firestore.collection('financeData').doc('mainData').get();
+            
+            if (doc.exists) {
+                const cloudData = doc.data();
+                // 移除 lastSync 字段，只保留数据
+                delete cloudData.lastSync;
+                db = cloudData;
+                if (!db.catOrder) db.catOrder = Object.keys(db.cats || {});
+                
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(db));
+                document.getElementById('cloud-status').innerHTML = '☁️ 云端同步: ✅ 已加载云端数据';
+                render();
+                return true;
+            } else {
+                // 云端没有数据，上传本地数据
+                await saveToCloud();
+                return false;
+            }
+        } catch (error) {
+            console.error('从云端加载失败:', error);
+            return false;
+        }
+    }
+
+    function loadFromLocal() {
+        const saved = localStorage.getItem(STORAGE_KEY);
+        if (saved) {
+            try {
+                let parsed = JSON.parse(saved);
+                if (parsed) {
+                    db = parsed;
+                    if (!db.catOrder) db.catOrder = Object.keys(db.cats || {});
+                }
+            } catch (e) {
+                console.error('解析本地数据失败:', e);
+            }
+        }
+        render();
+    }
+
+    // 统一的更新函数
+    async function updateDB(newDB) {
+        db = newDB;
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(db));
+        await saveToCloud();
+        render();
+    }
+
+    // ==================== 原有函数（只修改了数据保存部分）====================
     function resetInputsToToday() {
         const d = new Date().toISOString().split('T')[0];
         document.getElementById('cal-picker').value = d.substring(0,7);
@@ -267,53 +427,68 @@
     }
 
     function init() {
-        const saved = localStorage.getItem(STORAGE_KEY);
-        if (saved) { 
-            try { 
-                let parsed = JSON.parse(saved); 
-                if (parsed) { 
-                    db = parsed; 
-                    if(!db.catOrder) db.catOrder = Object.keys(db.cats); 
-                } 
-            } catch(e) {} 
-        } else {
-            // 尝试从云端备份恢复
-            const cloudBackup = localStorage.getItem('BF_CLOUD_BACKUP');
-            if (cloudBackup) {
-                try {
-                    const parsed = JSON.parse(cloudBackup);
-                    if (parsed && parsed.recs) {
-                        db = parsed;
-                        localStorage.setItem(STORAGE_KEY, cloudBackup);
-                    }
-                } catch(e) {}
-            }
-        }
+        // 先加载本地数据作为后备
+        loadFromLocal();
+        // 初始化 Firebase
+        initFirebase();
+        
         resetInputsToToday();
         const d = new Date().toISOString().split('T')[0];
         document.getElementById('f-start').value = d.substring(0,8)+'01';
         document.getElementById('f-end').value = d;
-        addExpRow(); 
-        render();
-        setInterval(() => { const now = new Date(); document.getElementById('clock').innerText = now.toLocaleString(); }, 1000);
+        addExpRow();
+        
+        setInterval(() => { 
+            const now = new Date(); 
+            document.getElementById('clock').innerText = now.toLocaleString(); 
+        }, 1000);
+        
+        // 每5分钟自动同步一次
+        autoSyncInterval = setInterval(() => {
+            if (firebaseLoaded && !syncInProgress) {
+                saveToCloud();
+            }
+        }, 5 * 60 * 1000);
     }
 
     async function startCapture(inputId) {
-        currentTargetInputId = inputId; const container = document.getElementById('capture-container'); const video = document.getElementById('video'); container.style.display = 'block';
-        try { const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false }); video.srcObject = stream; } catch (err) { alert("无法获取权限"); container.style.display = 'none'; }
-    }
-    function closeCapture() { const video = document.getElementById('video'); if (video.srcObject) { video.srcObject.getTracks().forEach(track => track.stop()); } document.getElementById('capture-container').style.display = 'none'; }
-    function takeScreenshot() { const video = document.getElementById('video'); const canvas = document.createElement('canvas'); canvas.width = 1280; canvas.height = (video.videoHeight / video.videoWidth) * 1280; const ctx = canvas.getContext('2d'); ctx.drawImage(video, 0, 0, canvas.width, canvas.height); capturedImgData = canvas.toDataURL('image/jpeg', 0.6); closeCapture(); alert("🖥️ 截图已就绪"); }
-
-    function forceSave(newRec) { 
-        db.recs.push(newRec); 
-        render(); 
-        alert("✅ 保存成功"); 
-        
-        // 如果开启了自动同步，则自动备份
-        if (simpleAutoSyncInterval) {
-            simpleSaveToCloud(true);
+        currentTargetInputId = inputId; 
+        const container = document.getElementById('capture-container'); 
+        const video = document.getElementById('video'); 
+        container.style.display = 'block';
+        try { 
+            const stream = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false }); 
+            video.srcObject = stream; 
+        } catch (err) { 
+            alert("无法获取权限"); 
+            container.style.display = 'none'; 
         }
+    }
+    
+    function closeCapture() { 
+        const video = document.getElementById('video'); 
+        if (video.srcObject) { 
+            video.srcObject.getTracks().forEach(track => track.stop()); 
+        } 
+        document.getElementById('capture-container').style.display = 'none'; 
+    }
+    
+    function takeScreenshot() { 
+        const video = document.getElementById('video'); 
+        const canvas = document.createElement('canvas'); 
+        canvas.width = 1280; 
+        canvas.height = (video.videoHeight / video.videoWidth) * 1280; 
+        const ctx = canvas.getContext('2d'); 
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height); 
+        capturedImgData = canvas.toDataURL('image/jpeg', 0.6); 
+        closeCapture(); 
+        alert("🖥️ 截图已就绪"); 
+    }
+
+    async function forceSave(newRec) { 
+        db.recs.push(newRec); 
+        await updateDB(db);
+        alert("✅ 保存成功"); 
     }
 
     function switchForm() {
@@ -328,7 +503,7 @@
     }
 
     function render() {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(db));
+        // 你的原有 render 函数完全不变
         const mode = document.getElementById('main-mode').value;
         const fS = document.getElementById('f-start').value, fE = document.getElementById('f-end').value, fK = document.getElementById('f-key').value.toLowerCase();
         
@@ -515,18 +690,54 @@
         }
     }
     
-    async function getImg(fileInput) { if(capturedImgData) return capturedImgData; const file = fileInput.files[0]; if(!file) return null; return new Promise((res) => { const reader = new FileReader(); reader.onload = () => res(reader.result); reader.readAsDataURL(file); }); }
-    function showImg(src) { document.getElementById('modal-content').src = src; document.getElementById('img-modal').style.display='flex'; }
-    function delRec(id) { if(confirm('确定删除？')) { db.recs = db.recs.filter(r=>r.id!==id); render(); } }
-    function delSet(key, i) { const k = key==='sup'?'sups':'staffs'; db[k].splice(i,1); render(); }
-    function addSetting(key) { const v = prompt("输入名称:"); if(v) { const k = key==='sup'?'sups':'staffs'; db[k].push(v); render(); } }
-
-    function addParentCat() { 
-        const v = prompt("输入大类名称:"); 
-        if(v && !db.catOrder.includes(v)) { db.catOrder.push(v); db.cats[v] = []; render(); } 
+    async function getImg(fileInput) { 
+        if(capturedImgData) return capturedImgData; 
+        const file = fileInput.files[0]; 
+        if(!file) return null; 
+        return new Promise((res) => { 
+            const reader = new FileReader(); 
+            reader.onload = () => res(reader.result); 
+            reader.readAsDataURL(file); 
+        }); 
+    }
+    
+    function showImg(src) { 
+        document.getElementById('modal-content').src = src; 
+        document.getElementById('img-modal').style.display='flex'; 
+    }
+    
+    async function delRec(id) { 
+        if(confirm('确定删除？')) { 
+            db.recs = db.recs.filter(r=>r.id!==id); 
+            await updateDB(db); 
+        } 
+    }
+    
+    async function delSet(key, i) { 
+        const k = key==='sup'?'sups':'staffs'; 
+        db[k].splice(i,1); 
+        await updateDB(db); 
+    }
+    
+    async function addSetting(key) { 
+        const v = prompt("输入名称:"); 
+        if(v) { 
+            const k = key==='sup'?'sups':'staffs'; 
+            db[k].push(v); 
+            await updateDB(db); 
+        } 
     }
 
-    function renameParentCat(oldName, newName) {
+    async function addParentCat() { 
+        const v = prompt("输入大类名称:"); 
+        if(v && !db.catOrder.includes(v)) { 
+            db.catOrder.push(v); 
+            db.cats[v] = []; 
+            await updateDB(db); 
+        } 
+    }
+
+    async function renameParentCat(oldName, newName) {
         newName = newName.trim();
         if (!newName || oldName === newName) { render(); return; }
         if (db.catOrder.includes(newName)) { alert("该名称已存在"); render(); return; }
@@ -543,10 +754,10 @@
                 });
             }
         });
-        render();
+        await updateDB(db);
     }
 
-    function renameChildCat(p, oldC, newC) {
+    async function renameChildCat(p, oldC, newC) {
         newC = newC.trim();
         if (!newC || oldC === newC) { render(); return; }
         if (db.cats[p].includes(newC)) { alert("该名称已存在"); render(); return; }
@@ -561,22 +772,29 @@
                 });
             }
         });
-        render();
+        await updateDB(db);
     }
 
-    function delParentCat(p) { 
+    async function delParentCat(p) { 
         if(confirm(`确定删除大类 ${p} 及其所有子类？`)) { 
-            db.catOrder = db.catOrder.filter(x => x !== p); delete db.cats[p]; render(); 
+            db.catOrder = db.catOrder.filter(x => x !== p); 
+            delete db.cats[p]; 
+            await updateDB(db); 
         } 
     }
 
-    function addChildCat(p) { 
+    async function addChildCat(p) { 
         const v = prompt(`在大类 [${p}] 下新增子类:`); 
-        if(v) { if(!db.cats[p]) db.cats[p]=[]; db.cats[p].push(v); render(); } 
+        if(v) { 
+            if(!db.cats[p]) db.cats[p]=[]; 
+            db.cats[p].push(v); 
+            await updateDB(db); 
+        } 
     }
 
-    function delChildCat(p, ci) { 
-        db.cats[p].splice(ci,1); render(); 
+    async function delChildCat(p, ci) { 
+        db.cats[p].splice(ci,1); 
+        await updateDB(db); 
     }
     
     function moveParent(i, dir) {
@@ -585,7 +803,7 @@
         const temp = db.catOrder[i];
         db.catOrder[i] = db.catOrder[target];
         db.catOrder[target] = temp;
-        render();
+        updateDB(db);
     }
     
     function moveChild(p, i, dir) {
@@ -594,12 +812,15 @@
         const temp = db.cats[p][i];
         db.cats[p][i] = db.cats[p][target];
         db.cats[p][target] = temp;
-        render();
+        updateDB(db);
     }
 
     function calcShift() {
-        const t = parseFloat(document.getElementById('in-total-sales').value)||0, p = parseFloat(document.getElementById('in-pos-sales').value)||0, df = parseFloat(document.getElementById('in-diff').value)||0;
-        let g = 0; document.querySelectorAll('#exp-rows .exp-amt').forEach(input => g += (parseFloat(input.value)||0));
+        const t = parseFloat(document.getElementById('in-total-sales').value)||0, 
+              p = parseFloat(document.getElementById('in-pos-sales').value)||0, 
+              df = parseFloat(document.getElementById('in-diff').value)||0;
+        let g = 0; 
+        document.querySelectorAll('#exp-rows .exp-amt').forEach(input => g += (parseFloat(input.value)||0));
         document.getElementById('shift-preview').innerHTML = `现金实收计算: ${t}(总) - ${g}(支) - ${p}(卡) + ${df}(误) = <b>${CUR}${(t-g-p+df).toFixed(1)}</b>`;
     }
 
@@ -750,6 +971,7 @@
                         if (confirm("⚠️ 导入将覆盖当前所有数据！确定要导入吗？")) {
                             db = content;
                             localStorage.setItem(STORAGE_KEY, JSON.stringify(db));
+                            saveToCloud();
                             location.reload();
                         }
                     } else {
@@ -763,77 +985,6 @@
         };
         input.click();
     }
-
-    // ========== 简单云同步功能 ==========
-    function simpleSaveToCloud(isAuto = false) {
-        try {
-            const dataStr = JSON.stringify(db);
-            localStorage.setItem('BF_CLOUD_BACKUP', dataStr);
-            localStorage.setItem('BF_CLOUD_BACKUP_TIME', new Date().toISOString());
-            document.getElementById('sync-status').innerHTML = `✅ 已备份 ${new Date().toLocaleTimeString()}`;
-            if (!isAuto) alert('✅ 数据已保存到云端！\n\n在同一浏览器的其他设备上，点击"从云端恢复"即可同步。');
-        } catch (error) {
-            document.getElementById('sync-status').innerHTML = '❌ 备份失败';
-            alert('备份失败：' + error.message);
-        }
-    }
-
-    function simpleLoadFromCloud() {
-        const savedData = localStorage.getItem('BF_CLOUD_BACKUP');
-        const backupTime = localStorage.getItem('BF_CLOUD_BACKUP_TIME');
-        
-        if (!savedData) {
-            document.getElementById('sync-status').innerHTML = '❌ 云端没有备份';
-            alert('云端没有找到备份数据');
-            return;
-        }
-        
-        if (!confirm('⚠️ 从云端恢复将覆盖当前所有本地数据！确定吗？')) {
-            return;
-        }
-        
-        try {
-            const cloudData = JSON.parse(savedData);
-            
-            if (!cloudData.recs || !cloudData.cats) {
-                throw new Error('备份文件格式不正确');
-            }
-            
-            db = cloudData;
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(db));
-            
-            const timeStr = backupTime ? new Date(backupTime).toLocaleString() : '未知时间';
-            document.getElementById('sync-status').innerHTML = `✅ 恢复成功 (备份于 ${timeStr})`;
-            
-            render();
-            alert('✅ 数据恢复成功！');
-            
-        } catch (error) {
-            document.getElementById('sync-status').innerHTML = '❌ 恢复失败';
-            alert('恢复失败：' + error.message);
-        }
-    }
-
-    function toggleSimpleAutoSync() {
-        const btn = document.getElementById('simple-auto-btn');
-        
-        if (simpleAutoSyncInterval) {
-            clearInterval(simpleAutoSyncInterval);
-            simpleAutoSyncInterval = null;
-            btn.innerText = '🔄 开启自动同步';
-            btn.style.background = '#9C27B0';
-            alert('自动同步已关闭');
-        } else {
-            simpleAutoSyncInterval = setInterval(() => {
-                simpleSaveToCloud(true);
-            }, 5 * 60 * 1000); // 5分钟
-            
-            btn.innerText = '⏹️ 关闭自动同步';
-            btn.style.background = '#F44336';
-            alert('自动同步已开启，每5分钟备份一次');
-        }
-    }
-    // ========== 云同步功能结束 ==========
 </script>
 </body>
 </html>
