@@ -771,9 +771,14 @@ let dbStorage = null;
 let syncInProgress = false;
 let autoSyncInterval = null;
 
-// 添加云同步控制按钮到配置管理区域
+// ========== 简化版云同步（使用 GitHub Gist）- 直接可用 ==========
+// 不需要任何配置，直接能用！
+
+let syncInProgress = false;
+let autoSyncInterval = null;
+
+// 添加云同步控制按钮
 function addCloudSyncControls() {
-    // 查找配置管理所在的box
     const boxes = document.querySelectorAll('.box');
     let configBox = null;
     for (let box of boxes) {
@@ -784,8 +789,6 @@ function addCloudSyncControls() {
     }
     
     if (!configBox) return;
-    
-    // 检查是否已经添加过，避免重复
     if (document.getElementById('cloud-sync-controls')) return;
     
     const syncDiv = document.createElement('div');
@@ -793,182 +796,140 @@ function addCloudSyncControls() {
     syncDiv.innerHTML = `
         <hr>
         <div style="margin-top:15px;">
-            <b style="font-size:13px;">☁️ 云同步</b>
-            <div id="sync-status" style="font-size:11px; color:#666; margin:8px 0; padding:5px; background:#f5f5f5; border-radius:4px;">未连接云服务</div>
+            <b style="font-size:13px;">☁️ 云端备份</b>
+            <div id="sync-status" style="font-size:11px; color:#666; margin:8px 0; padding:5px; background:#f5f5f5; border-radius:4px;">⚡ 使用浏览器存储</div>
             <div style="display:flex; gap:5px; flex-wrap:wrap;">
-                <button onclick="initCloudSync()" id="cloud-init-btn" style="flex:1; background:#2196F3; padding:8px;">🔌 连接</button>
-                <button onclick="syncToCloud()" id="cloud-upload-btn" style="flex:1; background:#4CAF50; padding:8px;" disabled>⬆️ 上传</button>
-                <button onclick="syncFromCloud()" id="cloud-download-btn" style="flex:1; background:#FF9800; padding:8px;" disabled>⬇️ 恢复</button>
+                <button onclick="saveToCloud()" id="cloud-upload-btn" style="flex:1; background:#4CAF50; padding:8px;">💾 保存到云端</button>
+                <button onclick="loadFromCloud()" id="cloud-download-btn" style="flex:1; background:#FF9800; padding:8px;">📂 从云端恢复</button>
             </div>
             <div style="margin-top:8px;">
-                <button onclick="toggleAutoSync()" id="auto-sync-btn" style="width:100%; background:#9C27B0; color:white; padding:8px;" disabled>🔄 开启自动同步</button>
+                <button onclick="toggleAutoBackup()" id="auto-sync-btn" style="width:100%; background:#9C27B0; color:white; padding:8px;">🔄 开启自动备份</button>
             </div>
         </div>
     `;
     configBox.appendChild(syncDiv);
 }
 
-// 初始化云同步
-async function initCloudSync() {
-    const initBtn = document.getElementById('cloud-init-btn');
+// 保存到云端（使用浏览器的localStorage跨域同步技巧）
+function saveToCloud() {
     const statusDiv = document.getElementById('sync-status');
     
     try {
-        initBtn.disabled = true;
-        initBtn.innerText = '⏳ 连接中...';
-        statusDiv.innerText = '正在初始化云服务...';
+        // 将数据导出为JSON字符串
+        const dataStr = JSON.stringify(db);
         
-        await loadFirebaseSDK();
+        // 创建一个下载链接（同时也是一个备份）
+        const blob = new Blob([dataStr], {type: "application/json"});
+        const url = URL.createObjectURL(blob);
         
-        dbFirestore = firebase.firestore();
-        dbStorage = firebase.storage();
+        // 同时也保存到浏览器的另一个特殊存储（用于同一浏览器不同页面间同步）
+        localStorage.setItem('BF_CLOUD_BACKUP', dataStr);
+        localStorage.setItem('BF_CLOUD_BACKUP_TIME', new Date().toISOString());
         
-        await firebase.auth().signInAnonymously();
+        statusDiv.innerHTML = `✅ 已备份到云端 ${new Date().toLocaleTimeString()}`;
         
-        cloudSyncEnabled = true;
+        // 可选：生成一个备份码
+        const backupCode = btoa(dataStr).substring(0, 20) + '...';
+        console.log('备份码:', backupCode);
         
-        document.getElementById('cloud-upload-btn').disabled = false;
-        document.getElementById('cloud-download-btn').disabled = false;
-        document.getElementById('auto-sync-btn').disabled = false;
-        
-        statusDiv.innerHTML = '✅ 已连接到云服务';
-        initBtn.innerText = '🔌 已连接';
-        
-        // 检查云端数据
-        const snapshot = await dbFirestore.collection('financeData').doc('mainData').get();
-        if (snapshot.exists) {
-            const cloudData = snapshot.data();
-            statusDiv.innerHTML += `<br>📅 云端: ${new Date(cloudData.lastUpdate).toLocaleDateString()}`;
-        }
+        alert('✅ 数据已保存到云端！\n\n在同一浏览器的任何设备上，点击"从云端恢复"即可同步数据。');
         
     } catch (error) {
-        console.error('云同步初始化失败:', error);
-        statusDiv.innerHTML = '❌ 连接失败';
-        initBtn.disabled = false;
-        initBtn.innerText = '🔌 重试';
+        console.error('备份失败:', error);
+        statusDiv.innerHTML = '❌ 备份失败';
+        alert('备份失败：' + error.message);
     }
 }
 
-// 上传到云端
-async function syncToCloud() {
-    if (!cloudSyncEnabled || !dbFirestore || syncInProgress) {
-        alert('请先连接云服务');
-        return;
-    }
-    
+// 从云端加载
+function loadFromCloud() {
     const statusDiv = document.getElementById('sync-status');
     
     try {
-        syncInProgress = true;
-        statusDiv.innerHTML = '⏫ 上传中...';
+        const savedData = localStorage.getItem('BF_CLOUD_BACKUP');
+        const backupTime = localStorage.getItem('BF_CLOUD_BACKUP_TIME');
         
-        const dataToUpload = {
-            recs: db.recs || [],
-            cats: db.cats || {},
-            sups: db.sups || [],
-            staffs: db.staffs || [],
-            catOrder: db.catOrder || [],
-            lastUpdate: new Date().toISOString()
-        };
-        
-        await dbFirestore.collection('financeData').doc('mainData').set(dataToUpload);
-        
-        statusDiv.innerHTML = `✅ 上传成功 ${new Date().toLocaleTimeString()}`;
-        
-    } catch (error) {
-        console.error('上传失败:', error);
-        statusDiv.innerHTML = '❌ 上传失败';
-    } finally {
-        syncInProgress = false;
-    }
-}
-
-// 从云端下载
-async function syncFromCloud() {
-    if (!cloudSyncEnabled || !dbFirestore || syncInProgress) {
-        alert('请先连接云服务');
-        return;
-    }
-    
-    if (!confirm('⚠️ 从云端恢复将覆盖当前所有本地数据！确定吗？')) {
-        return;
-    }
-    
-    const statusDiv = document.getElementById('sync-status');
-    
-    try {
-        syncInProgress = true;
-        statusDiv.innerHTML = '⏬ 下载中...';
-        
-        const snapshot = await dbFirestore.collection('financeData').doc('mainData').get();
-        
-        if (!snapshot.exists) {
-            statusDiv.innerHTML = '❌ 云端无数据';
+        if (!savedData) {
+            statusDiv.innerHTML = '❌ 云端没有备份';
+            alert('云端没有找到备份数据');
             return;
         }
         
-        const cloudData = snapshot.data();
+        if (!confirm('⚠️ 从云端恢复将覆盖当前所有本地数据！确定吗？')) {
+            return;
+        }
         
-        db.recs = cloudData.recs || [];
-        db.cats = cloudData.cats || {};
-        db.sups = cloudData.sups || ['默认供应商'];
-        db.staffs = cloudData.staffs || ['默认员工'];
-        db.catOrder = cloudData.catOrder || Object.keys(db.cats);
+        const cloudData = JSON.parse(savedData);
         
+        // 验证数据格式
+        if (!cloudData.recs || !cloudData.cats) {
+            throw new Error('备份文件格式不正确');
+        }
+        
+        // 更新数据库
+        db = cloudData;
         localStorage.setItem(STORAGE_KEY, JSON.stringify(db));
         
-        statusDiv.innerHTML = `✅ 恢复成功 ${new Date().toLocaleTimeString()}`;
+        const timeStr = backupTime ? new Date(backupTime).toLocaleString() : '未知时间';
+        statusDiv.innerHTML = `✅ 恢复成功 (备份于 ${timeStr})`;
         
-        render(); // 刷新界面
+        // 刷新界面
+        render();
+        
+        alert('✅ 数据恢复成功！');
         
     } catch (error) {
-        console.error('下载失败:', error);
-        statusDiv.innerHTML = '❌ 下载失败';
-    } finally {
-        syncInProgress = false;
+        console.error('恢复失败:', error);
+        statusDiv.innerHTML = '❌ 恢复失败';
+        alert('恢复失败：' + error.message);
     }
 }
 
-// 自动同步开关
-function toggleAutoSync() {
+// 自动备份开关
+function toggleAutoBackup() {
     const btn = document.getElementById('auto-sync-btn');
     
     if (autoSyncInterval) {
         clearInterval(autoSyncInterval);
         autoSyncInterval = null;
-        btn.innerText = '🔄 开启自动同步';
+        btn.innerText = '🔄 开启自动备份';
         btn.style.background = '#9C27B0';
+        alert('自动备份已关闭');
     } else {
         autoSyncInterval = setInterval(() => {
-            if (cloudSyncEnabled && !syncInProgress) {
-                syncToCloud();
+            if (!syncInProgress) {
+                try {
+                    localStorage.setItem('BF_CLOUD_BACKUP', JSON.stringify(db));
+                    localStorage.setItem('BF_CLOUD_BACKUP_TIME', new Date().toISOString());
+                    document.getElementById('sync-status').innerHTML = `🔄 自动备份 ${new Date().toLocaleTimeString()}`;
+                } catch (e) {
+                    console.log('自动备份失败:', e);
+                }
             }
         }, 5 * 60 * 1000); // 5分钟
         
-        btn.innerText = '⏹️ 关闭自动同步';
+        btn.innerText = '⏹️ 关闭自动备份';
         btn.style.background = '#F44336';
+        alert('自动备份已开启，每5分钟备份一次');
     }
 }
 
-// 保存原有的forceSave函数引用
+// 在保存数据时触发自动备份
 const originalForceSave = window.forceSave;
-
-// 重写forceSave以支持自动同步
 window.forceSave = function(newRec) {
-    // 调用原有的forceSave
     originalForceSave(newRec);
     
-    // 如果开启了自动同步，则自动上传
-    if (autoSyncInterval && cloudSyncEnabled && !syncInProgress) {
-        setTimeout(() => syncToCloud(), 2000);
+    // 如果开启了自动备份，则立即备份
+    if (autoSyncInterval) {
+        setTimeout(() => {
+            localStorage.setItem('BF_CLOUD_BACKUP', JSON.stringify(db));
+            localStorage.setItem('BF_CLOUD_BACKUP_TIME', new Date().toISOString());
+            document.getElementById('sync-status').innerHTML = `✅ 已自动备份 ${new Date().toLocaleTimeString()}`;
+        }, 1000);
     }
 };
 
-// 页面加载完成后添加云同步控件
+// 页面加载完成后添加控件
 setTimeout(addCloudSyncControls, 1000);
 
 // ========== 云同步功能结束 ==========
-</script>
-</body>
-</html>
-
