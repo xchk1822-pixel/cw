@@ -549,34 +549,46 @@
         capturedImgData = null; 
     }
 
-    function init() {
-        // 先加载本地数据作为后备
-        loadFromLocal();
-        // 初始化 Firebase
-        initFirebase();
-        
-        resetInputsToToday();
-        const d = new Date().toISOString().split('T')[0];
-        document.getElementById('f-start').value = d.substring(0,8)+'01';
-        document.getElementById('f-end').value = d;
-        addExpRow();
-        
-        setInterval(() => { 
-            const now = new Date(); 
-            document.getElementById('clock').innerText = now.toLocaleString(); 
-        }, 1000);
-        
-        // 每5分钟自动同步一次
-        autoSyncInterval = setInterval(() => {
-            if (firebaseLoaded && !syncInProgress) {
-                saveToCloud();
-            }
-        }, 5 * 60 * 1000);
-        
-        // 初始化密码保护
-        setTimeout(initPasswordProtection, 2000);
+   function init() {
+    // 强制从本地加载数据
+    const saved = localStorage.getItem('BF_DB_V1299');
+    if (saved) {
+        try {
+            db = JSON.parse(saved);
+            if (!db.catOrder) db.catOrder = Object.keys(db.cats || {});
+            console.log("从本地加载数据成功");
+        } catch(e) {
+            console.error("解析失败", e);
+        }
     }
-
+    
+    // 渲染页面
+    render();
+    
+    // 再初始化 Firebase
+    initFirebase();
+    
+    resetInputsToToday();
+    const d = new Date().toISOString().split('T')[0];
+    document.getElementById('f-start').value = d.substring(0,8)+'01';
+    document.getElementById('f-end').value = d;
+    addExpRow();
+    
+    setInterval(() => { 
+        const now = new Date(); 
+        document.getElementById('clock').innerText = now.toLocaleString(); 
+    }, 1000);
+    
+    // 每5分钟自动同步一次
+    autoSyncInterval = setInterval(() => {
+        if (firebaseLoaded && !syncInProgress) {
+            saveToCloud();
+        }
+    }, 5 * 60 * 1000);
+    
+    // 初始化密码保护
+    setTimeout(initPasswordProtection, 2000);
+}
     async function startCapture(inputId) {
         currentTargetInputId = inputId; 
         const container = document.getElementById('capture-container'); 
@@ -1181,6 +1193,7 @@
 </script>
 </body>
 </html>
+
 
 
 
