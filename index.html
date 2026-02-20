@@ -1151,18 +1151,7 @@
         XLSX.writeFile(wb, `Bluefield_Finance_${new Date().toISOString().split('T')[0]}.xlsx`);
     }
 
-    function exportBackup() {
-        const dataStr = JSON.stringify(db);
-        const blob = new Blob([dataStr], {type: "application/json"});
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `BF_Backup_${new Date().toISOString().split('T')[0]}.json`;
-        a.click();
-        alert("✅ 备份文件 (.json) 已下载。请妥善保存，换电脑时可用它导入恢复。");
-    }
-
-    function importBackup() {
+        function importBackup() {
         const input = document.createElement('input');
         input.type = 'file';
         input.accept = '.json';
@@ -1190,6 +1179,54 @@
         };
         input.click();
     }
+
+// ==================== 添加缺失的函数 ====================
+
+// 保存到云端
+async function saveToCloud() {
+    if (!firebaseLoaded || !firestore || syncInProgress) return false;
+    
+    try {
+        syncInProgress = true;
+        await firestore.collection('financeData').doc('mainData').set({
+            ...db,
+            lastSync: new Date().toISOString()
+        });
+        document.getElementById('cloud-status').innerHTML = '☁️ 云端同步: ✅ 已同步 ' + new Date().toLocaleTimeString();
+        return true;
+    } catch (error) {
+        console.error('保存到云端失败:', error);
+        document.getElementById('cloud-status').innerHTML = '☁️ 云端同步: ⚠️ 同步失败';
+        return false;
+    } finally {
+        syncInProgress = false;
+    }
+}
+
+// 更新数据库
+async function updateDB(newDB) {
+    db = newDB;
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(db));
+    await saveToCloud();
+    render();
+}
+
+// 从本地加载数据（备用）
+function loadFromLocal() {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved) {
+        try {
+            let parsed = JSON.parse(saved);
+            if (parsed) {
+                db = parsed;
+                if (!db.catOrder) db.catOrder = Object.keys(db.cats || {});
+            }
+        } catch (e) {
+            console.error('解析本地数据失败:', e);
+        }
+    }
+    render();
+}
 </script>
 </body>
 </html>
