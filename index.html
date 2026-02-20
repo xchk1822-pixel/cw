@@ -366,77 +366,44 @@
     }
 
     // ==================== 数据同步函数 ====================
-    async function saveToCloud() {
-        if (!firebaseLoaded || !firestore || syncInProgress) return false;
-        
-        try {
-            syncInProgress = true;
-            await firestore.collection('financeData').doc('mainData').set({
-                ...db,
-                lastSync: new Date().toISOString()
-            });
-            document.getElementById('cloud-status').innerHTML = '☁️ 云端同步: ✅ 已同步 ' + new Date().toLocaleTimeString();
-            return true;
-        } catch (error) {
-            console.error('保存到云端失败:', error);
-            document.getElementById('cloud-status').innerHTML = '☁️ 云端同步: ⚠️ 同步失败';
-            return false;
-        } finally {
-            syncInProgress = false;
-        }
-    }
-
     async function loadFromCloud() {
-        if (!firebaseLoaded || !firestore) return false;
+    if (!firebaseLoaded || !firestore) return false;
+    
+    try {
+        const doc = await firestore.collection('financeData').doc('mainData').get();
         
-        try {
-            const doc = await firestore.collection('financeData').doc('mainData').get();
+        if (doc.exists) {
+            const cloudData = doc.data();
+            // 移除 lastSync 字段，只保留数据
+            delete cloudData.lastSync;
             
-            if (doc.exists) {
-                const cloudData = doc.data();
-                // 移除 lastSync 字段，只保留数据
-                delete cloudData.lastSync;
+            // 比较本地和云端，取更新的那个
+            const localData = localStorage.getItem(STORAGE_KEY);
+            if (localData) {
+                const localParsed = JSON.parse(localData);
+                // 如果有时间戳可以比较，简单起见先用本地
+                console.log("使用本地数据");
+                db = localParsed;
+                document.getElementById('cloud-status').innerHTML = '☁️ 云端同步: ✅ 使用本地数据';
+            } else {
+                // 本地没有数据，用云端的
                 db = cloudData;
                 if (!db.catOrder) db.catOrder = Object.keys(db.cats || {});
-                
                 localStorage.setItem(STORAGE_KEY, JSON.stringify(db));
                 document.getElementById('cloud-status').innerHTML = '☁️ 云端同步: ✅ 已加载云端数据';
-                render();
-                return true;
-            } else {
-                // 云端没有数据，上传本地数据
-                await saveToCloud();
-                return false;
             }
-        } catch (error) {
-            console.error('从云端加载失败:', error);
+            render();
+            return true;
+        } else {
+            // 云端没有数据，上传本地
+            await saveToCloud();
             return false;
         }
+    } catch (error) {
+        console.error('从云端加载失败:', error);
+        return false;
     }
-
-    function loadFromLocal() {
-        const saved = localStorage.getItem(STORAGE_KEY);
-        if (saved) {
-            try {
-                let parsed = JSON.parse(saved);
-                if (parsed) {
-                    db = parsed;
-                    if (!db.catOrder) db.catOrder = Object.keys(db.cats || {});
-                }
-            } catch (e) {
-                console.error('解析本地数据失败:', e);
-            }
-        }
-        render();
-    }
-
-    // 统一的更新函数
-    async function updateDB(newDB) {
-        db = newDB;
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(db));
-        await saveToCloud();
-        render();
-    }
+}
 
     // ==================== 密码保护功能 ====================
     function initPasswordProtection() {
@@ -1214,6 +1181,7 @@
 </script>
 </body>
 </html>
+
 
 
 
