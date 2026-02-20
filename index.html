@@ -732,13 +732,18 @@
                 if(r.type === 'salary' && staffSummary[r.staff]) staffSummary[r.staff].sal += (r.amt||0); 
                 else if(r.type === 'loan' && staffSummary[r.staff]) staffSummary[r.staff].loan += (r.amt||0);
                 
-                if(r.type === 'day-sum') {
-                    stats.mCash += (r.cash||0); stats.mPos += (r.pos||0); stats.mSales += (r.totalSales||0); stats.mDiff += (r.diff||0);
-                    if(r.expDetails) r.expDetails.forEach(ed => { stats.mExp += ed.amt; expAgg[ed.cat] = (expAgg[ed.cat]||0)+ed.amt; let iname = ed.cat.split(':')[1]; itemAgg[iname] = (itemAgg[iname]||0)+ed.amt; });
-                } else if(r.type === 'pay') { 
-                    stats.mExp += (r.amt||0); 
-                    expAgg['还款:供应商'] = (expAgg['还款:供应商']||0)+(r.amt||0); 
-                }
+               if(r.type === 'day-sum') {
+    stats.mCash += (r.cash||0); stats.mPos += (r.pos||0); stats.mSales += (r.totalSales||0); stats.mDiff += (r.diff||0);
+    if(r.expDetails) r.expDetails.forEach(ed => { stats.mExp += ed.amt; expAgg[ed.cat] = (expAgg[ed.cat]||0)+ed.amt; let iname = ed.cat.split(':')[1]; itemAgg[iname] = (itemAgg[iname]||0)+ed.amt; });
+} else if(r.type === 'pay') { 
+    stats.mExp += (r.amt||0); 
+    expAgg['还款:供应商'] = (expAgg['还款:供应商']||0)+(r.amt||0); 
+} else if(r.type === 'buy' && r.itemDetails) {
+    // 处理供应商挂账的货品
+    r.itemDetails.forEach(item => {
+        itemAgg[item.name] = (itemAgg[item.name]||0) + item.amt;
+    });
+} 
             }
             if(inDate && r.type==='day-sum' && r.date.startsWith(document.getElementById('cal-picker').value)) calData[r.date] = (calData[r.date]||0)+(r.totalSales||0);
         });
@@ -1209,5 +1214,6 @@
 </script>
 </body>
 </html>
+
 
 
