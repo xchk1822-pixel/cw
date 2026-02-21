@@ -298,7 +298,7 @@
     let autoSyncInterval = null;
 
     // ==================== 密码保护变量 ====================
-    const DEFAULT_PASSWORD = "120906";
+    const DEFAULT_PASSWORD = "123456";
     let currentPassword = localStorage.getItem('BF_PASSWORD') || DEFAULT_PASSWORD;
     let isUnlocked = false;
 
@@ -579,12 +579,12 @@
         document.getElementById('clock').innerText = now.toLocaleString(); 
     }, 1000);
     
-    // 每5分钟自动同步一次
+    // 每1分钟自动同步一次
     autoSyncInterval = setInterval(() => {
         if (firebaseLoaded && !syncInProgress) {
             saveToCloud();
         }
-    }, * 60 * 1000);
+    }, 60 * 1000);
     
     // 初始化密码保护
     setTimeout(initPasswordProtection, 2000);
@@ -1230,6 +1230,7 @@ function loadFromLocal() {
 </script>
 </body>
 </html>
+
 
 
 
