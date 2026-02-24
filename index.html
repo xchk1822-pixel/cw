@@ -736,14 +736,19 @@
         document.getElementById('h-profit').innerText = CUR + currentProfit.toFixed(1);
         document.getElementById('h-debt').innerText = CUR + stats.tDebt.toFixed(1);
 
-        document.getElementById('revTbody').innerHTML = `
-    <tr><td>小票总额</td><td>${CUR}${stats.mSales.toFixed(1)}</td></tr>
-    <tr><td>现金实收</td><td>${CUR}${stats.mCash.toFixed(1)}</td></tr>
-    <tr><td>刷卡(POS)</td><td>${CUR}${stats.mPos.toFixed(1)}</td></tr>
-    <tr><td style="color:#e53935;">营业支出(含还款)</td><td style="color:#e53935;">${CUR}${stats.mExp.toFixed(1)}</td></tr>
-    <tr><td style="color:#9c27b0;">其中:还款支出</td><td style="color:#9c27b0;">${CUR}${(expAgg['还款:供应商']||0).toFixed(1)}</td></tr>
-    <tr style="color:orange"><td>误差值</td><td>${CUR}${stats.mDiff.toFixed(1)}</td></tr>
-    <tr style="font-weight:bold; border-top:2px solid #eee;"><td>模块盈亏</td><td style="color:${currentProfit>=0?'green':'red'}">${CUR}${currentProfit.toFixed(1)}</td></tr>
+        // 计算还款总额（从 expAgg 中获取）
+const repayAmount = expAgg['还款:供应商'] || 0;
+// 营业支出 = 总支出 - 还款
+const normalExp = stats.mExp - repayAmount;
+
+document.getElementById('revTbody').innerHTML = `
+<tr><td>小票总额</td><td>${CUR}${stats.mSales.toFixed(1)}</td></tr>
+<tr><td>现金实收</td><td>${CUR}${stats.mCash.toFixed(1)}</td></tr>
+<tr><td>刷卡(POS)</td><td>${CUR}${stats.mPos.toFixed(1)}</td></tr>
+<tr><td style="color:#e53935;">营业支出</td><td style="color:#e53935;">${CUR}${normalExp.toFixed(1)}</td></tr>
+<tr><td style="color:#9c27b0;">还款支出</td><td style="color:#9c27b0;">${CUR}${repayAmount.toFixed(1)}</td></tr>
+<tr style="color:orange"><td>误差值</td><td>${CUR}${stats.mDiff.toFixed(1)}</td></tr>
+<tr style="font-weight:bold; border-top:2px solid #eee;"><td>模块盈亏</td><td style="color:${currentProfit>=0?'green':'red'}">${CUR}${currentProfit.toFixed(1)}</td></tr>
 `;
         document.getElementById('itemTbody').innerHTML = Object.entries(itemAgg)
             .sort((a, b) => b[1] - a[1]) 
@@ -1238,6 +1243,7 @@ function loadFromLocal() {
 </script>
 </body>
 </html>
+
 
 
 
